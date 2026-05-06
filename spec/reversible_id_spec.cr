@@ -92,4 +92,41 @@ describe EncodedId::ReversibleId do
       end
     end
   end
+
+  describe ".hashid" do
+    it "round-trips a single id" do
+      id = EncodedId::ReversibleId.hashid(salt: "this is my salt")
+      encoded = id.encode(12345)
+      encoded.should_not be_empty
+      id.decode(encoded).should eq [12345_i64]
+    end
+
+    it "round-trips multiple ids" do
+      id = EncodedId::ReversibleId.hashid(salt: "this is my salt")
+      encoded = id.encode([1_i64, 2_i64, 3_i64])
+      id.decode(encoded).should eq [1_i64, 2_i64, 3_i64]
+    end
+
+    it "humanizes the output by default (separator every 4 chars)" do
+      id = EncodedId::ReversibleId.hashid(salt: "this is my salt")
+      encoded = id.encode(12345)
+      encoded.should contain("-")
+      id.decode(encoded).should eq [12345_i64]
+    end
+
+    it "decodes when separators were stripped or case was mangled" do
+      id = EncodedId::ReversibleId.hashid(salt: "this is my salt")
+      encoded = id.encode(987)
+      id.decode(encoded.gsub("-", "")).should eq [987_i64]
+      id.decode(encoded.upcase, downcase: true).should eq [987_i64]
+    end
+
+    it "produces different encodings under different salts (round-trips per salt)" do
+      a = EncodedId::ReversibleId.hashid(salt: "salt-a")
+      b = EncodedId::ReversibleId.hashid(salt: "salt-b")
+      a.encode(42).should_not eq b.encode(42)
+      a.decode(a.encode(42)).should eq [42_i64]
+      b.decode(b.encode(42)).should eq [42_i64]
+    end
+  end
 end

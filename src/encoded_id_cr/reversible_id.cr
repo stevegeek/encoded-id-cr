@@ -1,20 +1,25 @@
 module EncodedId
-  # High-level facade that ties an `Alphabet`, an encoder (`Encoders::Sqids` for
-  # now -- Hashids would be a sibling), and the `CharHelpers` humanize/unhumanize
-  # passes into a single `encode` / `decode` API matching the Ruby gem's
+  # High-level facade that ties an `Alphabet`, an encoder (`Encoders::Sqids` or
+  # `Encoders::Hashid`), and the `CharHelpers` humanize/unhumanize passes into a
+  # single `encode` / `decode` API matching the Ruby gem's
   # `EncodedId::ReversibleId`.
   #
-  # Build via the `.sqids` factory:
+  # Build via one of the factories:
   #
   #     id = EncodedId::ReversibleId.sqids
-  #     id.encode(123)            # => "37vq-3u7t"  (humanized)
-  #     id.decode("37vq-3u7t")    # => [123_i64]
+  #     id.encode(123)               # => "37vq-3u7t"
+  #     id.decode("37vq-3u7t")       # => [123_i64]
   #
-  # The factory's defaults match the Ruby gem: modified-Crockford alphabet,
-  # min_length 8, separator "-" inserted every 4 characters, max 32 inputs per
-  # encode, max output length 128.
+  #     hid = EncodedId::ReversibleId.hashid(salt: "my-salt")
+  #     hid.encode(123)              # => "m3pm-8anj" (or similar)
+  #     hid.decode("m3pm-8anj")      # => [123_i64]
+  #
+  # Defaults match the Ruby gem: modified-Crockford alphabet, separator "-"
+  # inserted every 4 characters, max 32 inputs per encode, max output 128.
   class ReversibleId
-    @encoder : Encoders::Sqids
+    alias Encoder = Encoders::Sqids | Encoders::Hashid
+
+    @encoder : Encoder
     @alphabet : Alphabet
     @split_at : Int32?
     @split_with : String
@@ -34,8 +39,21 @@ module EncodedId
       new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length)
     end
 
+    def self.hashid(
+      salt : String,
+      alphabet : Alphabet = Alphabet.modified_crockford,
+      min_hash_length : Int32 = 8,
+      split_at : Int32? = 4,
+      split_with : String = "-",
+      max_inputs_per_id : Int32 = 32,
+      max_length : Int32? = 128,
+    ) : ReversibleId
+      encoder = Encoders::Hashid.new(Encoders::HashidSalt.new(salt), min_hash_length, alphabet)
+      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length)
+    end
+
     def initialize(
-      @encoder : Encoders::Sqids,
+      @encoder : Encoder,
       @alphabet : Alphabet,
       @split_at : Int32?,
       @split_with : String,
@@ -46,21 +64,14 @@ module EncodedId
 
     getter alphabet : Alphabet
 
-    # Encode a single integer.
     def encode(value : Int) : String
       encode_int64s([value.to_i64])
     end
 
-    # Encode any array of integers (Int8/16/32/64). Normalised to Int64 at the
-    # boundary so the encoder sees a homogeneous input.
     def encode(values : Array(T)) : String forall T
       encode_int64s(values.map(&.to_i64))
     end
 
-    # Decode a (possibly humanized) ID back to an `Array(Int64)`.
-    #
-    # `downcase: true` will lowercase the input before applying equivalences --
-    # useful when a user's URL got upper-cased somewhere along the way.
     def decode(str : String, downcase : Bool = false) : Array(Int64)
       raise EncodedIdFormatError.new("Max length of input exceeded") if max_length_exceeded?(str)
 
