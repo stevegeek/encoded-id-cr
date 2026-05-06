@@ -12,3 +12,4 @@ end
 require "./encoded_id_cr/alphabet"
 require "./encoded_id_cr/char_helpers"
 require "./encoded_id_cr/encoders/sqids"
+require "./encoded_id_cr/reversible_id"
