@@ -12,6 +12,7 @@ end
 
 require "./encoded_id_cr/alphabet"
 require "./encoded_id_cr/char_helpers"
+require "./encoded_id_cr/hex_representation"
 require "./encoded_id_cr/encoders/sqids"
 require "./encoded_id_cr/encoders/hashid_salt"
 require "./encoded_id_cr/encoders/hashid_consistent_shuffle"

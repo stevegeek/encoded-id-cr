@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Run the Crystal port (--release build) and the Ruby gem benchmark
+# back-to-back so you can eyeball the iterations/sec side by side.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+CRYSTAL_INSTALL="${HOME}/.asdf/installs/crystal/1.20.1"
+export CRYSTAL_LIBRARY_PATH="${CRYSTAL_LIBRARY_PATH:+$CRYSTAL_LIBRARY_PATH:}${CRYSTAL_INSTALL}/embedded/lib"
+
+mkdir -p bin
+
+echo "==> Building bench/crystal_bench.cr (--release, takes ~15s)..."
+crystal build --release --no-debug bench/crystal_bench.cr -o bin/bench_crystal
+
+echo
+echo "================================================================"
+echo "  Crystal"
+echo "================================================================"
+./bin/bench_crystal
+
+echo
+echo "================================================================"
+echo "  Ruby"
+echo "================================================================"
+ruby bench/ruby_bench.rb

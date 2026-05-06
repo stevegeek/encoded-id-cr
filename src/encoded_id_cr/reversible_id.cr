@@ -25,6 +25,7 @@ module EncodedId
     @split_with : String
     @max_inputs_per_id : Int32
     @max_length : Int32?
+    @hex : HexRepresentation
 
     def self.sqids(
       alphabet : Alphabet = Alphabet.modified_crockford,
@@ -34,9 +35,10 @@ module EncodedId
       split_with : String = "-",
       max_inputs_per_id : Int32 = 32,
       max_length : Int32? = 128,
+      hex_digit_encoding_group_size : Int32 = 4,
     ) : ReversibleId
       encoder = Encoders::Sqids.new(min_length, alphabet.characters, blocklist)
-      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length)
+      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size)
     end
 
     def self.hashid(
@@ -47,9 +49,10 @@ module EncodedId
       split_with : String = "-",
       max_inputs_per_id : Int32 = 32,
       max_length : Int32? = 128,
+      hex_digit_encoding_group_size : Int32 = 4,
     ) : ReversibleId
       encoder = Encoders::Hashid.new(Encoders::HashidSalt.new(salt), min_hash_length, alphabet)
-      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length)
+      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size)
     end
 
     def initialize(
@@ -59,7 +62,9 @@ module EncodedId
       @split_with : String,
       @max_inputs_per_id : Int32,
       @max_length : Int32?,
+      hex_digit_encoding_group_size : Int32 = 4,
     )
+      @hex = HexRepresentation.new(hex_digit_encoding_group_size)
     end
 
     getter alphabet : Alphabet
@@ -70,6 +75,21 @@ module EncodedId
 
     def encode(values : Array(T)) : String forall T
       encode_int64s(values.map(&.to_i64))
+    end
+
+    # Encode a hex string (UUIDs, hashes, etc.) by chunking it into integer
+    # groups (default 4 hex digits per group) and encoding the resulting list.
+    def encode_hex(hex : String) : String
+      encode_int64s(@hex.hex_as_integers(hex))
+    end
+
+    def encode_hex(hexes : Array(String)) : String
+      encode_int64s(@hex.hex_as_integers(hexes))
+    end
+
+    # Decode a previously hex-encoded string back to the array of hex strings.
+    def decode_hex(str : String, downcase : Bool = false) : Array(String)
+      @hex.integers_as_hex(decode(str, downcase: downcase))
     end
 
     def decode(str : String, downcase : Bool = false) : Array(Int64)

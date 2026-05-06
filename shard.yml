@@ -7,3 +7,7 @@ authors:
 crystal: '>= 1.20.1'
 
 license: MIT
+
+targets:
+  cr_encoded_id:
+    main: src/cli.cr
