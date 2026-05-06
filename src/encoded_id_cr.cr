@@ -2,12 +2,19 @@ module EncodedId
   VERSION = "0.1.0"
 
   class Error < Exception; end
+
   class InvalidAlphabetError < Error; end
+
   class InvalidConfigurationError < Error; end
+
   class InvalidInputError < Error; end
+
   class EncodedIdFormatError < Error; end
+
   class EncodedIdLengthError < Error; end
+
   class SaltError < Error; end
+
   class BlocklistError < Error; end
 end
 

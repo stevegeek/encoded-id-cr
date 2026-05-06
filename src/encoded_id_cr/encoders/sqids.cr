@@ -59,10 +59,10 @@ module EncodedId
         # filtering branch when a custom alphabet is supplied.
         downcased_alphabet = alphabet_chars.downcase.chars.to_set
         @blocklist = blocklist.compact_map do |word|
-          next nil if word.size < 3
+          next if word.size < 3
           downcased = word.downcase
           # All chars of the (downcased) word must exist in the alphabet.
-          next nil unless downcased.each_char.all? { |c| downcased_alphabet.includes?(c) }
+          next unless downcased.each_char.all? { |c| downcased_alphabet.includes?(c) }
           downcased
         end.to_set
 

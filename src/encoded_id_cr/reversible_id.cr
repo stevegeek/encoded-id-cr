@@ -132,7 +132,9 @@ module EncodedId
       end
 
       encoded = @encoder.encode(inputs)
-      encoded = CharHelpers.humanize_length(encoded, @split_at.not_nil!, @split_with) if humanize?
+      if (split_at = @split_at) && !@split_with.empty?
+        encoded = CharHelpers.humanize_length(encoded, split_at, @split_with)
+      end
 
       raise EncodedIdLengthError.new("Encoded ID exceeds max_length") if max_length_exceeded?(encoded)
 

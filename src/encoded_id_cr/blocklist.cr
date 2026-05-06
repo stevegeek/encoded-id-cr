@@ -56,7 +56,7 @@ module EncodedId
     # Returns the offending word as a `String` if the input contains any
     # blocked substring (case-insensitive), or `nil` otherwise.
     def blocks?(string : String) : String?
-      return nil if @words.empty?
+      return if @words.empty?
       downcased = string.downcase
       @words.each do |word|
         return word if downcased.includes?(word)

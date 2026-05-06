@@ -63,11 +63,11 @@ module EncodedId
           add_leading = false
         else
           hex_string << if add_leading
-                          # Zero-pad to maintain group size for non-leading groups.
-                          integer.to_s(16).rjust(@hex_digit_encoding_group_size, '0')
-                        else
-                          integer.to_s(16)
-                        end
+            # Zero-pad to maintain group size for non-leading groups.
+            integer.to_s(16).rjust(@hex_digit_encoding_group_size, '0')
+          else
+            integer.to_s(16)
+          end
           add_leading = true
         end
       end
@@ -90,14 +90,14 @@ module EncodedId
       # the configured size, then unshift each char to keep the groups in the
       # correct (left-to-right within each group) order.
       groups = [] of Array(Char)
-      hex_cleaned.chars.reverse.each_with_index do |ch, idx|
+      hex_cleaned.chars.reverse!.each_with_index do |ch, idx|
         group_id = idx // @hex_digit_encoding_group_size
         while groups.size <= group_id
           groups << ([] of Char)
         end
         groups[group_id].unshift(ch)
       end
-      groups.map { |g| g.join.to_i64(16) }
+      groups.map(&.join.to_i64(16))
     end
   end
 end

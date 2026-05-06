@@ -12,7 +12,7 @@ module EncodedId
     class HashidOrdinalAlphabetSeparatorGuards
       include HashidConsistentShuffle
 
-      SEP_DIV      = 3.5
+      SEP_DIV      =  3.5
       GUARD_DIV    = 12.0
       DEFAULT_SEPS = "cfhistuCFHISTU".chars.map(&.ord)
       SPACE_CHAR   = ' '.ord

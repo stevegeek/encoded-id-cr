@@ -20,7 +20,7 @@ class CrEncodedIdCli
   property encoder : String?
   property alphabet_name : String = "modified_crockford"
   property min_length : Int32 = 8
-  property no_humanize : Bool = false
+  property? no_humanize : Bool = false
   property values : Array(String) = [] of String
 
   def parse(argv : Array(String))
@@ -76,7 +76,7 @@ class CrEncodedIdCli
 
   private def reversible_id : EncodedId::ReversibleId
     use_hashid = (@encoder == "hashid") || (@encoder.nil? && !@salt.nil?)
-    split_at = @no_humanize ? nil : 4
+    split_at = no_humanize? ? nil : 4
 
     if use_hashid
       EncodedId::ReversibleId.hashid(

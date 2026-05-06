@@ -1,0 +1,9 @@
+Naming/BlockParameterName:
+  Enabled: false
+
+Naming/QueryBoolMethods:
+  Excluded:
+    - spec/**
+
+Style/VerboseNilType:
+  Enabled: false

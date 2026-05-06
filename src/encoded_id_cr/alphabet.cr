@@ -29,7 +29,7 @@ module EncodedId
     # Construct from a String of characters.
     def initialize(characters : String, equivalences : Hash(String, String)? = nil)
       raise InvalidAlphabetError.new("Alphabet must be a populated string or array") unless characters.size > 0
-      @unique_characters = characters.chars.uniq.map(&.to_s)
+      @unique_characters = characters.chars.uniq!.map(&.to_s)
       validate!(equivalences)
       @characters = @unique_characters.join
       @equivalences = equivalences

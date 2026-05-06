@@ -36,13 +36,13 @@ describe EncodedId::Alphabet do
     it "deduplicates characters (matches Ruby String#chars.uniq)" do
       alphabet = EncodedId::Alphabet.new("0123456789abcdefa")
       alphabet.size.should eq(16)
-      alphabet.unique_characters.should eq(%w(0 1 2 3 4 5 6 7 8 9 a b c d e f))
+      alphabet.unique_characters.should eq(%w[0 1 2 3 4 5 6 7 8 9 a b c d e f])
     end
   end
 
   describe "#initialize (Array(String) input)" do
     it "constructs from an Array of single-character Strings" do
-      chars = %w(0 1 2 3 4 5 6 7 8 9 a b c d e f)
+      chars = %w[0 1 2 3 4 5 6 7 8 9 a b c d e f]
       alphabet = EncodedId::Alphabet.new(chars)
       alphabet.size.should eq(16)
       alphabet.unique_characters.should eq(chars)

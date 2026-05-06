@@ -67,7 +67,7 @@ module EncodedId
         return "" if numbers.empty? || numbers.any?(&.negative?)
         encoded = internal_encode(numbers)
         if check_blocklist?(encoded)
-          if (blocked = contains_blocklisted_word?(encoded))
+          if blocked = contains_blocklisted_word?(encoded)
             raise BlocklistError.new("Generated ID '#{encoded}' contains blocklisted word: '#{blocked}'")
           end
         end
@@ -86,7 +86,7 @@ module EncodedId
 
       private def contains_blocklisted_word?(encoded : String) : String?
         bl = @blocklist
-        return nil if bl.nil?
+        return if bl.nil?
         bl.blocks?(encoded)
       end
 
@@ -203,7 +203,7 @@ module EncodedId
         # the actual encoded payload.
         i = (array.size == 3 || array.size == 2) ? 1 : 0
 
-        if (segment = array[i]?)
+        if segment = array[i]?
           lottery_char = segment[0]
           remainder = segment.size > 1 ? segment[1..] : ""
 
