@@ -45,13 +45,28 @@ module EncodedId
       salt : String,
       alphabet : Alphabet = Alphabet.modified_crockford,
       min_hash_length : Int32 = 8,
+      blocklist : Blocklist | Array(String) | Nil = nil,
+      blocklist_mode : Encoders::BlocklistMode = Encoders::BlocklistMode::LengthThreshold,
+      blocklist_max_length : Int32 = 32,
       split_at : Int32? = 4,
       split_with : String = "-",
       max_inputs_per_id : Int32 = 32,
       max_length : Int32? = 128,
       hex_digit_encoding_group_size : Int32 = 4,
     ) : ReversibleId
-      encoder = Encoders::Hashid.new(Encoders::HashidSalt.new(salt), min_hash_length, alphabet)
+      bl = case blocklist
+           when Blocklist     then blocklist
+           when Array(String) then Blocklist.new(blocklist)
+           when Nil           then nil
+           end
+      encoder = Encoders::Hashid.new(
+        Encoders::HashidSalt.new(salt),
+        min_hash_length,
+        alphabet,
+        bl,
+        blocklist_mode,
+        blocklist_max_length,
+      )
       new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size)
     end
 

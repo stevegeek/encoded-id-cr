@@ -8,9 +8,11 @@ module EncodedId
   class EncodedIdFormatError < Error; end
   class EncodedIdLengthError < Error; end
   class SaltError < Error; end
+  class BlocklistError < Error; end
 end
 
 require "./encoded_id_cr/alphabet"
+require "./encoded_id_cr/blocklist"
 require "./encoded_id_cr/char_helpers"
 require "./encoded_id_cr/hex_representation"
 require "./encoded_id_cr/encoders/sqids"

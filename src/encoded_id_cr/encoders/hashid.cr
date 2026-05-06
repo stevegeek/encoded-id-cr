@@ -10,8 +10,16 @@ module EncodedId
     # Numbers are joined by separators, padded with guards to reach the minimum
     # length, and verified on decode by re-encoding and comparing.
     #
-    # Blocklist support is intentionally left out of this initial port — the
-    # constructor accepts no `blocklist` argument and never raises BlocklistError.
+    # `blocklist_mode` follows the Ruby gem:
+    #   :length_threshold (default) -- only check ids whose length is <=
+    #     blocklist_max_length (cheap, the case where humans most easily read
+    #     the result)
+    #   :always           -- check every id regardless of length
+    enum BlocklistMode
+      Always
+      LengthThreshold
+    end
+
     class Hashid
       include HashidConsistentShuffle
 
@@ -22,15 +30,21 @@ module EncodedId
       getter salt : String
       getter alphabet : Alphabet
       getter min_hash_length : Int32
+      getter blocklist : Blocklist?
 
       @separators_and_guards : HashidOrdinalAlphabetSeparatorGuards
       @escaped_separator_selector : String
       @escaped_guards_selector : String
+      @blocklist_mode : BlocklistMode
+      @blocklist_max_length : Int32
 
       def initialize(
         salt : HashidSalt,
         @min_hash_length : Int32 = 0,
         alphabet : Alphabet = Alphabet.alphanum,
+        @blocklist : Blocklist? = nil,
+        @blocklist_mode : BlocklistMode = BlocklistMode::LengthThreshold,
+        @blocklist_max_length : Int32 = 32,
       )
         if @min_hash_length < 0
           raise ArgumentError.new("The min length must be a Integer and greater than or equal to 0")
@@ -51,7 +65,29 @@ module EncodedId
 
       def encode(numbers : Array(Int64)) : String
         return "" if numbers.empty? || numbers.any?(&.negative?)
-        internal_encode(numbers)
+        encoded = internal_encode(numbers)
+        if check_blocklist?(encoded)
+          if (blocked = contains_blocklisted_word?(encoded))
+            raise BlocklistError.new("Generated ID '#{encoded}' contains blocklisted word: '#{blocked}'")
+          end
+        end
+        encoded
+      end
+
+      private def check_blocklist?(encoded : String) : Bool
+        bl = @blocklist
+        return false if bl.nil? || bl.empty?
+        case @blocklist_mode
+        when .always?           then true
+        when .length_threshold? then encoded.size <= @blocklist_max_length
+        else                         true
+        end
+      end
+
+      private def contains_blocklisted_word?(encoded : String) : String?
+        bl = @blocklist
+        return nil if bl.nil?
+        bl.blocks?(encoded)
       end
 
       def decode(hash : String) : Array(Int64)
