@@ -30,7 +30,7 @@ module EncodedId
     def self.sqids(
       alphabet : Alphabet = Alphabet.modified_crockford,
       min_length : Int32 = 8,
-      blocklist : Array(String) = Encoders::Sqids::DEFAULT_BLOCKLIST,
+      blocklist : Blocklist | Array(String) = Encoders::Sqids::DEFAULT_BLOCKLIST,
       split_at : Int32? = 4,
       split_with : String = "-",
       max_inputs_per_id : Int32 = 32,
@@ -119,8 +119,8 @@ module EncodedId
 
       begin
         @encoder.decode(unhumanized)
-      rescue err : InvalidInputError
-        raise EncodedIdFormatError.new(err.message)
+      rescue ex : InvalidInputError
+        raise EncodedIdFormatError.new(ex.message)
       end
     end
 

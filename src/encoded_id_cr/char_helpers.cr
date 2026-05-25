@@ -22,14 +22,14 @@ module EncodedId
       separator_count = (len - 1) // split_at
       # Pre-size the buffer: original chars + (separator_count * separator len)
       result = String.build(len + separator_count * split_with.size) do |io|
-        s.each_char_with_index do |ch, idx|
+        s.each_char_with_index do |char, idx|
           # Insert the separator BEFORE characters at positions split_at,
           # 2*split_at, ..., separator_count*split_at. This matches Ruby's
           # `String#insert(insert_pos, with)` loop with offsets accumulating.
           if idx > 0 && (idx % split_at) == 0 && (idx // split_at) <= separator_count
             io << split_with
           end
-          io << ch
+          io << char
         end
       end
       result
@@ -56,8 +56,8 @@ module EncodedId
     # String (validated upstream by `Alphabet`).
     def map_equivalent_characters(s : String, equivalences : Hash(String, String)?) : String
       return s if equivalences.nil?
-      equivalences.reduce(s) do |cleaned, kv|
-        from, to = kv
+      equivalences.reduce(s) do |cleaned, pair|
+        from, to = pair
         cleaned.tr(from, to)
       end
     end

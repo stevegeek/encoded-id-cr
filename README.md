@@ -15,7 +15,7 @@ The internal Sqids and Hashids encoders are **byte-for-byte compatible** with th
 | Hashids encoder (the gem's optimised `Hashid`) | ✓ |
 | `ReversibleId` facade with `.sqids` / `.hashid` factories | ✓ |
 | `cr_encoded_id` CLI | ✓ |
-| Hashids blocklist enforcement | not yet |
+| Hashids blocklist enforcement | ✓ (raises `BlocklistError` on collision) |
 | Configuration objects (`HashidConfiguration`, etc.) | replaced by direct kwargs |
 | Rails integration (`encoded_id-rails`) | out of scope |
 
@@ -75,6 +75,8 @@ Then:
 | `bin/cr_encoded_id decode 9da2-a7an --salt foo` | → `12345` |
 | `bin/cr_encoded_id encode 12345 --salt foo --no-humanize` | no `-` separator → `9da2a7an` |
 | `bin/cr_encoded_id encode 12345 --alphabet alphanum` | full alphanumeric alphabet |
+| `bin/cr_encoded_id encode_hex 1A2B --salt foo` | encode a hex string (UUIDs etc.) |
+| `bin/cr_encoded_id decode_hex <encoded> --salt foo` | decode → original hex string(s) |
 | `bin/cr_encoded_id --help` | full options list |
 
 The encoder is chosen based on whether you pass `--salt`: with a salt it's Hashids, without it's Sqids. Override with `--encoder=sqids` or `--encoder=hashid`.

@@ -1,5 +1,5 @@
 Naming/BlockParameterName:
-  Enabled: false
+  Enabled: true
 
 Naming/QueryBoolMethods:
   Excluded:

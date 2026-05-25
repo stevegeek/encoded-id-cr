@@ -1,4 +1,4 @@
-require "./isolated_helper"
+require "./spec_helper"
 
 describe EncodedId::CharHelpers do
   describe ".humanize_length" do
