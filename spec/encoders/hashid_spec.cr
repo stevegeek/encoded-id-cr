@@ -5,9 +5,19 @@ require "../../src/encoded_id_cr"
 # test/encoded_id/encoders/hash_id_test.rb so we can verify byte-for-byte
 # compatibility with the upstream encoded_id implementation.
 SALT          = EncodedId::Encoders::HashidSalt.new("this is my salt")
-DEFAULT_HASH  = EncodedId::Encoders::Hashid.new(SALT)
 DEFAULT_SEPS  = "cfhistuCFHISTU".chars.map(&.ord)
 DEFAULT_ALPHA = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".chars.map(&.ord)
+
+# Test-only subclass that exposes the private `unhash` for fixture verification.
+# Production code must not call `unhash` directly — use `decode`, which wraps
+# `unhash` with `DecodePayloadOverflowError` handling.
+class TestableHashid < EncodedId::Encoders::Hashid
+  def _unhash_for_spec(input : String, alphabet : Array(Int32)) : Int64
+    unhash(input, alphabet)
+  end
+end
+
+DEFAULT_HASH = TestableHashid.new(SALT)
 
 class ShuffleHarness
   include EncodedId::Encoders::HashidConsistentShuffle
@@ -43,6 +53,22 @@ describe EncodedId::Encoders::HashidConsistentShuffle do
       salt_chars[-2..],
       salt_chars.size,
     ).should eq "fcaodykrgqvblxjwmtupzeisnh".chars.map(&.ord)
+  end
+
+  it "raises SaltError (not IndexError) when salt_part_2 is too short (review §7)" do
+    # Regression for MED §7: only the nil-check on salt_part_2 ran here, so an
+    # undersized salt_part_2 used to crash later with `IndexError` from the
+    # indexed access inside the loop. Convert that into a useful `SaltError`
+    # up front.
+    harness = ShuffleHarness.new
+    expect_raises(EncodedId::SaltError, /Salt is too short/) do
+      harness.consistent_shuffle!(
+        "abcdef".chars.map(&.ord),
+        [1, 2],       # salt_part_1.size = 2
+        [3] of Int32, # salt_part_2.size = 1; need salt_part_2.size >= 8
+        10,           # max_salt_length = 10
+      )
+    end
   end
 end
 
@@ -81,6 +107,23 @@ describe EncodedId::Encoders::Hashid do
       h = EncodedId::Encoders::Hashid.new(SALT, 0, EncodedId::Alphabet.new("cfhistuCFHISTU01"))
       h.alphabet_ordinals.map(&.unsafe_chr.to_s).should eq ["1", "0"]
     end
+
+    it "rejects multibyte characters in the alphabet (review §8)" do
+      # Regression for MED §8: Hashid previously silently accepted multibyte
+      # alphabet characters even though Sqids rejected them. Unified on
+      # reject.
+      multibyte_alphabet = EncodedId::Alphabet.new("abcdefghijklmnop\u{1F600}\u{1F601}")
+      expect_raises(EncodedId::InvalidConfigurationError, /multibyte/) do
+        EncodedId::Encoders::Hashid.new(SALT, 0, multibyte_alphabet)
+      end
+    end
+
+    it "rejects multibyte characters in the salt (review §8)" do
+      multibyte_salt = EncodedId::Encoders::HashidSalt.new("salt-\u{1F600}")
+      expect_raises(EncodedId::InvalidConfigurationError, /multibyte/) do
+        EncodedId::Encoders::Hashid.new(multibyte_salt)
+      end
+    end
   end
 
   describe "#encode (single number)" do
@@ -89,7 +132,6 @@ describe EncodedId::Encoders::Hashid do
     end
 
     it "matches the published Ruby fixtures across a range of values" do
-      DEFAULT_HASH.encode([-1_i64]).should eq ""
       DEFAULT_HASH.encode([1_i64]).should eq "NV"
       DEFAULT_HASH.encode([22_i64]).should eq "K4"
       DEFAULT_HASH.encode([333_i64]).should eq "OqM"
@@ -117,9 +159,15 @@ describe EncodedId::Encoders::Hashid do
       DEFAULT_HASH.encode([] of Int64).should eq ""
     end
 
-    it "returns empty string if any number is negative" do
-      DEFAULT_HASH.encode([-1_i64]).should eq ""
-      DEFAULT_HASH.encode([10_i64, -10_i64]).should eq ""
+    it "raises InvalidInputError if any number is negative (review §9)" do
+      # Phase 2 MED §9: unified on raise across both encoders + ReversibleId,
+      # matching the Ruby parent gem. Previously returned "".
+      expect_raises(EncodedId::InvalidInputError, /negative/) do
+        DEFAULT_HASH.encode([-1_i64])
+      end
+      expect_raises(EncodedId::InvalidInputError, /negative/) do
+        DEFAULT_HASH.encode([10_i64, -10_i64])
+      end
     end
 
     it "does not produce repeating patterns for identical numbers" do
@@ -193,22 +241,53 @@ describe EncodedId::Encoders::Hashid do
         DEFAULT_HASH.decode("asdf-")
       end
     end
+
+    it "returns [] of Int64 for an attacker-supplied long string that overflows Int64" do
+      # Regression for CRIT §1: a 30-byte alphabet-only input would otherwise
+      # overflow `Int64` inside `unhash` and escape as a 500. The public
+      # `#decode` contract is now "garbage → empty array" for the overflow
+      # case (specifically `DecodePayloadOverflowError`, a subclass of
+      # `InvalidInputError`).
+      encoder = EncodedId::Encoders::Hashid.new(EncodedId::Encoders::HashidSalt.new("x"))
+      encoder.decode("a" * 30).should eq([] of Int64)
+    end
+
+    it "round-trips a value whose encoded form is later added to the blocklist" do
+      # Regression for HIGH §2: `internal_decode`'s roundtrip-verify used the
+      # public `encode`, which re-ran the blocklist check — so a record stored
+      # before a word entered the blocklist would surface `BlocklistError` on
+      # decode. The verify now uses `internal_encode`.
+      salt = EncodedId::Encoders::HashidSalt.new("my-salt")
+      plain = EncodedId::Encoders::Hashid.new(salt)
+      encoded = plain.encode([42_i64])
+
+      blocklist = EncodedId::Blocklist.new([encoded.downcase])
+      guarded = EncodedId::Encoders::Hashid.new(
+        salt,
+        0,
+        EncodedId::Alphabet.alphanum,
+        blocklist,
+        EncodedId::Encoders::BlocklistMode::Always,
+      )
+
+      guarded.decode(encoded).should eq([42_i64])
+    end
   end
 
-  describe "#unhash" do
+  describe "#unhash (private, exercised via TestableHashid)" do
     it "matches the published Ruby fixtures" do
-      DEFAULT_HASH.unhash("bb", "abc".chars.map(&.ord)).should eq 4
-      DEFAULT_HASH.unhash("aaa", "abc".chars.map(&.ord)).should eq 0
-      DEFAULT_HASH.unhash("cba", "abc".chars.map(&.ord)).should eq 21
-      DEFAULT_HASH.unhash("cbaabc", "abc".chars.map(&.ord)).should eq 572
-      DEFAULT_HASH.unhash("aX11b", "abcXYZ123".chars.map(&.ord)).should eq 2728
-      DEFAULT_HASH.unhash("abbd", "abcdefg".chars.map(&.ord)).should eq 59
-      DEFAULT_HASH.unhash("abcd", "abcdefg".chars.map(&.ord)).should eq 66
-      DEFAULT_HASH.unhash("acac", "abcdefg".chars.map(&.ord)).should eq 100
-      DEFAULT_HASH.unhash("acfg", "abcdefg".chars.map(&.ord)).should eq 139
-      DEFAULT_HASH.unhash("x21y", "xyz1234".chars.map(&.ord)).should eq 218
-      DEFAULT_HASH.unhash("yy44", "xyz1234".chars.map(&.ord)).should eq 440
-      DEFAULT_HASH.unhash("1xzz", "xyz1234".chars.map(&.ord)).should eq 1045
+      DEFAULT_HASH._unhash_for_spec("bb", "abc".chars.map(&.ord)).should eq 4
+      DEFAULT_HASH._unhash_for_spec("aaa", "abc".chars.map(&.ord)).should eq 0
+      DEFAULT_HASH._unhash_for_spec("cba", "abc".chars.map(&.ord)).should eq 21
+      DEFAULT_HASH._unhash_for_spec("cbaabc", "abc".chars.map(&.ord)).should eq 572
+      DEFAULT_HASH._unhash_for_spec("aX11b", "abcXYZ123".chars.map(&.ord)).should eq 2728
+      DEFAULT_HASH._unhash_for_spec("abbd", "abcdefg".chars.map(&.ord)).should eq 59
+      DEFAULT_HASH._unhash_for_spec("abcd", "abcdefg".chars.map(&.ord)).should eq 66
+      DEFAULT_HASH._unhash_for_spec("acac", "abcdefg".chars.map(&.ord)).should eq 100
+      DEFAULT_HASH._unhash_for_spec("acfg", "abcdefg".chars.map(&.ord)).should eq 139
+      DEFAULT_HASH._unhash_for_spec("x21y", "xyz1234".chars.map(&.ord)).should eq 218
+      DEFAULT_HASH._unhash_for_spec("yy44", "xyz1234".chars.map(&.ord)).should eq 440
+      DEFAULT_HASH._unhash_for_spec("1xzz", "xyz1234".chars.map(&.ord)).should eq 1045
     end
   end
 end

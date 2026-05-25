@@ -63,8 +63,19 @@ module EncodedId
         @escaped_guards_selector = @separators_and_guards.guards_tr_selector
       end
 
+      # Encode an array of non-negative integers to a Hashid string.
+      #
+      # Returns `""` for an empty array. Raises `InvalidInputError` for any
+      # negative input — matches the Ruby parent gem's behaviour and the
+      # `ReversibleId` facade contract. Previously this returned `""` for
+      # negative input, which disagreed with `ReversibleId#encode_int64s`
+      # (raised) and meant the same library had two different contracts for
+      # the same error condition. (review §9)
       def encode(numbers : Array(Int64)) : String
-        return "" if numbers.empty? || numbers.any?(&.negative?)
+        return "" if numbers.empty?
+        if numbers.any?(&.negative?)
+          raise InvalidInputError.new("encoded_id does not support negative integers")
+        end
         encoded = internal_encode(numbers)
         if check_blocklist?(encoded)
           if blocked = contains_blocklisted_word?(encoded)
@@ -90,13 +101,30 @@ module EncodedId
         bl.blocks?(encoded)
       end
 
+      # Decodes any input that produces a value ≤ `Int64::MAX`. Attacker-
+      # controlled strings ~30+ alphabet-only chars long would otherwise
+      # overflow the base-N reconstruction in `unhash`; those raise
+      # `DecodePayloadOverflowError` from `unhash`, which we catch here and
+      # convert to an empty array (matching the existing "garbage → empty"
+      # contract Sqids exposes and avoiding a 500 in callers).
       def decode(hash : String) : Array(Int64)
         return [] of Int64 if hash.empty?
         internal_decode(hash)
+      rescue DecodePayloadOverflowError
+        [] of Int64
       end
 
-      # `unhash` is exposed only for testing — Ruby tests reach in via `.send`.
-      def unhash(input : String, alphabet : Array(Int32)) : Int64
+      # Reconstruct a single integer from its base-N digit codepoints.
+      #
+      # **Internal — not part of the public API.** Specs reach this via a
+      # test-only subclass that exposes a public `_unhash_for_spec` wrapper
+      # (see `spec/encoders/hashid_spec.cr`).
+      #
+      # Raises `DecodePayloadOverflowError` (a subclass of `InvalidInputError`)
+      # when the reconstructed value would exceed `Int64::MAX`. Inputs longer
+      # than ~`log_base_N(Int64::MAX)` characters reliably overflow; the public
+      # `#decode` method catches that and returns an empty array.
+      private def unhash(input : String, alphabet : Array(Int32)) : Int64
         num = 0_i64
         input_length = input.size
         alphabet_length = alphabet.size
@@ -108,8 +136,12 @@ module EncodedId
           raise InvalidInputError.new("unable to unhash") if pos.nil?
 
           exponent = input_length - i - 1
-          multiplier = (alphabet_length.to_i64) ** exponent
-          num += pos.to_i64 * multiplier
+          begin
+            multiplier = (alphabet_length.to_i64) ** exponent
+            num += pos.to_i64 * multiplier
+          rescue OverflowError
+            raise DecodePayloadOverflowError.new("decoded payload exceeds Int64::MAX")
+          end
           i += 1
         end
 
@@ -192,6 +224,20 @@ module EncodedId
         ordinals_to_string(hashid_code)
       end
 
+      # Decodes `hash` into the original integer array. Used by the public
+      # `decode` (which wraps it with overflow handling).
+      #
+      # **Security note — review §10.** Encoded IDs are obfuscation, not
+      # authentication. Do NOT use them as bearer tokens. The roundtrip-verify
+      # below uses `!=` (not a constant-time compare) because the input is not
+      # a secret — it's an obfuscated public identifier, and the comparison is
+      # against a value derived from the user's own input. A timing side-channel
+      # here would leak which characters round-trip correctly, but that gives
+      # an attacker no useful capability (they already have the candidate
+      # encoded id, and there's no secret to extract). If you need
+      # authentication you should derive a separate token alongside (e.g. via
+      # `marten-signed-id`) and never rely on encoded-id reversibility as a
+      # security boundary.
       private def internal_decode(hash : String) : Array(Int64)
         ret = [] of Int64
         current_alphabet = @alphabet_ordinals.dup
@@ -223,8 +269,13 @@ module EncodedId
           end
 
           # Verify by re-encoding. If the round-trip doesn't match, the input
-          # wasn't a valid hash for this configuration.
-          if encode(ret) != hash
+          # wasn't a valid hash for this configuration. We call
+          # `internal_encode` here (not the public `encode`) so the roundtrip
+          # check doesn't re-run the blocklist — otherwise an ID legitimately
+          # stored before a word was added to the blocklist would surface as a
+          # `BlocklistError` on decode instead of returning the original
+          # numbers.
+          if internal_encode(ret) != hash
             ret = [] of Int64
           end
         end
@@ -255,7 +306,7 @@ module EncodedId
       # Equivalent to Ruby's `arr.pack("U*")` for the alphabets we support.
       private def ordinals_to_string(ords : Array(Int32)) : String
         String.build(ords.size) do |io|
-          ords.each { |o| io << o.unsafe_chr }
+          ords.each { |ord| io << ord.unsafe_chr }
         end
       end
     end

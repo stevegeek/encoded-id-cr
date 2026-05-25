@@ -128,5 +128,14 @@ describe EncodedId::ReversibleId do
       a.decode(a.encode(42)).should eq [42_i64]
       b.decode(b.encode(42)).should eq [42_i64]
     end
+
+    it "returns [] of Int64 for an attacker-supplied long string (does NOT raise)" do
+      # Regression for CRIT §1 at the public facade: a 30-byte alphabet-only
+      # input would previously surface as a 500 (OverflowError) because the
+      # encoder's `unhash` overflowed `Int64`. The contract is now "garbage →
+      # empty array" all the way through the facade.
+      id = EncodedId::ReversibleId.hashid(salt: "test")
+      id.decode("a" * 30).should eq([] of Int64)
+    end
   end
 end

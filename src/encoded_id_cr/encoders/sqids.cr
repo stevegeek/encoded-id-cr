@@ -28,11 +28,6 @@ require "./blocklist_default"
 module EncodedId
   module Encoders
     class Sqids
-      # Maximum integer value we support encoding. Ruby uses Integer::MAX
-      # (arbitrary precision); Crystal's natural analog for typical IDs is
-      # `Int64::MAX`. Numbers larger than this raise InvalidInputError.
-      MAX_INT = Int64::MAX
-
       # Shuffled alphabet, stored as codepoints (single-byte chars => Int32).
       @alphabet : Array(Int32)
       @min_length : Int32
@@ -42,29 +37,31 @@ module EncodedId
       # Build a new encoder.
       #
       # `alphabet_chars` is the raw alphabet string (single-byte ASCII only).
-      # The caller-provided alphabet is taken at face value: we don't dedupe or
-      # length-check beyond multibyte rejection (the Ruby tests only exercise
-      # those two validations through this surface; additional validations
-      # belong in the Alphabet wrapper a sibling agent owns).
-      def initialize(min_length : Int32, alphabet_chars : String, blocklist : Array(String) = DEFAULT_BLOCKLIST)
+      # The alphabet must contain unique characters and be at least 3 chars
+      # long (canonical Sqids minimum). Duplicate characters silently break
+      # round-trips; multibyte characters aren't supported. Other higher-level
+      # alphabet semantics belong in the `Alphabet` wrapper.
+      #
+      # `blocklist` accepts either a `Blocklist` instance or a raw
+      # `Array(String)`. Both flow through `Blocklist#filter_for_alphabet`,
+      # which centralises the "size >= 3 AND only contains alphabet chars"
+      # filter rule that Sqids and Hashid share. (review LOW dedup)
+      def initialize(
+        min_length : Int32,
+        alphabet_chars : String,
+        blocklist : Blocklist | Array(String) = DEFAULT_BLOCKLIST,
+      )
         validate_alphabet!(alphabet_chars)
         validate_min_length!(min_length)
 
         alphabet_codepoints = alphabet_chars.chars.map(&.ord)
 
-        # Filter the blocklist to only words that:
-        #   - are at least 3 chars long
-        #   - consist solely of (lowercased) characters present in the alphabet
-        # then store as a downcased Set for fast lookup. Mirrors the Ruby gem's
-        # filtering branch when a custom alphabet is supplied.
-        downcased_alphabet = alphabet_chars.downcase.chars.to_set
-        @blocklist = blocklist.compact_map do |word|
-          next if word.size < 3
-          downcased = word.downcase
-          # All chars of the (downcased) word must exist in the alphabet.
-          next unless downcased.each_char.all? { |c| downcased_alphabet.includes?(c) }
-          downcased
-        end.to_set
+        # Reuse `Blocklist#filter_for_alphabet` so the alphabet-narrowing rule
+        # lives in exactly one place (Blocklist itself). The filtered Blocklist
+        # is then projected to a downcased `Set(String)` for O(1) membership
+        # tests in `blocked_id?`.
+        bl = blocklist.is_a?(Blocklist) ? blocklist : Blocklist.new(blocklist)
+        @blocklist = bl.filter_for_alphabet(alphabet_chars).to_a.to_set
 
         @alphabet = shuffle(alphabet_codepoints)
         @min_length = min_length
@@ -72,18 +69,20 @@ module EncodedId
 
       # Encode a list of non-negative integers to a Sqids string.
       #
-      # Returns "" for an empty array. Returns "" for any negative input
-      # (matching the Ruby gem's behaviour, which filters negatives via
-      # `between?(0, MAX_INT)` upstream — the Crystal test fixture asserts
-      # `encode([-1])` is empty).
+      # Returns `""` for an empty array. Raises `InvalidInputError` for any
+      # negative input — matches the Ruby parent gem's behaviour and the
+      # `ReversibleId` facade contract. Previously this returned `""` for
+      # negative input, which disagreed with `ReversibleId#encode_int64s`
+      # (raised) and meant the same library had two different contracts for
+      # the same error condition. (review §9)
       def encode(numbers : Array(Int64)) : String
         return "" if numbers.empty?
 
-        # Match Ruby behaviour: any negative number => return "" (Ruby filters
-        # via `between?(0, MAX_INT)` and the test fixture for [-1] expects "").
-        # Numbers above MAX_INT are impossible for Int64, but if a future
-        # widening lets one through we'd raise InvalidInputError here.
-        return "" if numbers.any?(&.negative?)
+        if numbers.any?(&.negative?)
+          raise EncodedId::InvalidInputError.new(
+            "encoded_id does not support negative integers"
+          )
+        end
 
         encode_numbers(numbers, 0)
       end
@@ -92,6 +91,12 @@ module EncodedId
       #
       # Invalid characters or malformed input return an empty array (this is
       # the Ruby gem's contract — it never raises for bad strings).
+      #
+      # Decodes any input that produces a value ≤ `Int64::MAX`. Attacker-
+      # controlled inputs ~30+ alphabet-only chars long can produce a base-N
+      # reconstruction that exceeds `Int64::MAX`; that surfaces as
+      # `DecodePayloadOverflowError` from `to_number` and is converted back to
+      # an empty array here.
       def decode(s : String) : Array(Int64)
         ret = [] of Int64
         return ret if s.empty?
@@ -99,8 +104,8 @@ module EncodedId
         id = s.chars.map(&.ord)
 
         # Reject any character not in our alphabet => empty array.
-        id.each do |c|
-          return ret unless @alphabet.includes?(c)
+        id.each do |codepoint|
+          return ret unless @alphabet.includes?(codepoint)
         end
 
         prefix = id[0]
@@ -125,6 +130,8 @@ module EncodedId
         end
 
         ret
+      rescue EncodedId::DecodePayloadOverflowError
+        [] of Int64
       end
 
       # ----- private -----
@@ -132,12 +139,31 @@ module EncodedId
       private def validate_alphabet!(alphabet_chars : String)
         # Crystal's String#chars iterates Unicode codepoints (Char). A multibyte
         # character has bytesize > 1 — the same predicate the Ruby gem uses.
-        alphabet_chars.each_char do |c|
-          if c.bytesize > 1
+        alphabet_chars.each_char do |char|
+          if char.bytesize > 1
             raise EncodedId::InvalidInputError.new(
               "unable to create sqids instance: Alphabet cannot contain multibyte characters"
             )
           end
+        end
+
+        # Canonical Sqids minimum (matches the upstream reference impl).
+        # Anything shorter cannot host the reserved separator + at least two
+        # alphabet positions and would round-trip nonsense.
+        if alphabet_chars.size < 3
+          raise EncodedId::InvalidConfigurationError.new(
+            "Sqids alphabet must be at least 3 chars"
+          )
+        end
+
+        # Duplicate chars silently break encode/decode round-trips (the shuffle
+        # picks one position deterministically, but `decode` walks linearly via
+        # `Array#index`, so duplicates map to the wrong slot). Reject up front.
+        # Use a Set to avoid the intermediate Array `chars.uniq` allocates.
+        if alphabet_chars.each_char.to_set.size != alphabet_chars.size
+          raise EncodedId::InvalidConfigurationError.new(
+            "Sqids alphabet must contain unique characters"
+          )
         end
       end
 
@@ -168,6 +194,10 @@ module EncodedId
         length = chars.size
         j = length - 1
         while j > 0
+          # `i * j` is Int32 multiplication; safe for any alphabet size where
+          # `length * length <= Int32::MAX` (~46_340 chars). Real-world Sqids
+          # alphabets are 16–256 chars, so this assumption holds with room to
+          # spare. If an alphabet ever exceeds ~46K chars, promote to Int64.
           r = ((i * j) + chars[i] + chars[j]) % length
           chars[i], chars[r] = chars[r], chars[i]
           i += 1
@@ -222,7 +252,7 @@ module EncodedId
         end
 
         result = String.build do |io|
-          id.each { |cp| io << cp.unsafe_chr }
+          id.each { |codepoint| io << codepoint.unsafe_chr }
         end
 
         if blocked_id?(result)
@@ -249,14 +279,23 @@ module EncodedId
       end
 
       # Inverse of to_id: read each codepoint as a digit in base `size - 1`.
+      #
+      # Raises `DecodePayloadOverflowError` when the reconstructed value would
+      # exceed `Int64::MAX`. The public `#decode` method catches that and
+      # returns an empty array (so attacker-supplied long-but-alphabet-valid
+      # inputs cannot escape as a 500).
       private def to_number(id : Array(Int32), alphabet : Array(Int32)) : Int64
         alphabet_length = (alphabet.size - 1).to_i64
-        id.reduce(0_i64) do |a, v|
-          v_index = alphabet.index(v)
+        id.reduce(0_i64) do |acc, codepoint|
+          cp_index = alphabet.index(codepoint)
           # Should be unreachable — the public `decode` validates membership
           # before this is called — but match the Ruby gem's defensive raise.
-          raise EncodedId::InvalidInputError.new("Character #{v} not found in alphabet") if v_index.nil?
-          (a * alphabet_length) + v_index.to_i64 - 1
+          raise EncodedId::InvalidInputError.new("Character #{codepoint} not found in alphabet") if cp_index.nil?
+          begin
+            (acc * alphabet_length) + cp_index.to_i64 - 1
+          rescue OverflowError
+            raise EncodedId::DecodePayloadOverflowError.new("decoded payload exceeds Int64::MAX")
+          end
         end
       end
 

@@ -9,6 +9,14 @@ module EncodedId
 
   class InvalidInputError < Error; end
 
+  # Raised when a decoded payload exceeds Int64::MAX (an attacker-controlled
+  # input string that produces a base-N value larger than Int64 can represent).
+  # Subclasses `InvalidInputError` so existing `rescue InvalidInputError`
+  # callers continue to work; public encoder `#decode` methods catch this
+  # specifically and return an empty array (the same "garbage → empty" contract
+  # Sqids already exposes).
+  class DecodePayloadOverflowError < InvalidInputError; end
+
   class EncodedIdFormatError < Error; end
 
   class EncodedIdLengthError < Error; end
