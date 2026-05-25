@@ -37,12 +37,17 @@ module EncodedId
       @words = words.map(&.to_s.downcase).to_set
     end
 
+    # Returns a copy of the internal word set so callers can iterate / inspect
+    # without being able to mutate the receiver. The memoised `.empty` /
+    # `.minimal` singletons share their internal `@words` set process-wide, so
+    # without the `.dup` here `Blocklist.minimal.words.add("x")` would corrupt
+    # the singleton for every other caller in the process. (review §5)
     def words : Set(String)
-      @words
+      @words.dup
     end
 
     def each(&)
-      @words.each { |w| yield w }
+      @words.each { |word| yield word }
     end
 
     def to_a : Array(String)
@@ -91,7 +96,7 @@ module EncodedId
       alphabet_set = alphabet_chars.map(&.downcase).to_set
       Blocklist.new(
         @words.select do |word|
-          word.size >= 3 && word.chars.all? { |c| alphabet_set.includes?(c.to_s) }
+          word.size >= 3 && word.chars.all? { |char| alphabet_set.includes?(char.to_s) }
         end
       )
     end

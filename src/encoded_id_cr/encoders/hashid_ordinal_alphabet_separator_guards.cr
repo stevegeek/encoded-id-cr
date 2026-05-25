@@ -25,6 +25,28 @@ module EncodedId
       getter guards_tr_selector : String
 
       def initialize(alphabet : Alphabet, salt : String)
+        # MED §8: reject multibyte characters in the alphabet and salt for
+        # consistency with Sqids (which already rejects them in
+        # `validate_alphabet!`). Hashid downstream operations such as
+        # `unsafe_chr.to_s` and the seasoning loop only behave correctly for
+        # single-byte codepoints; previously multibyte input silently produced
+        # mangled output. Raise `InvalidConfigurationError` (matching the
+        # Sqids error class for alphabet-shape problems).
+        alphabet.characters.each_char do |char|
+          if char.bytesize > 1
+            raise EncodedId::InvalidConfigurationError.new(
+              "Hashid alphabet cannot contain multibyte characters"
+            )
+          end
+        end
+        salt.each_char do |char|
+          if char.bytesize > 1
+            raise EncodedId::InvalidConfigurationError.new(
+              "Hashid salt cannot contain multibyte characters"
+            )
+          end
+        end
+
         @alphabet = alphabet.characters.chars.map(&.ord)
         @salt = salt.chars.map(&.ord)
         @seps = [] of Int32
@@ -40,7 +62,7 @@ module EncodedId
       end
 
       private def escape_chars_for_tr(chars : Array(String)) : String
-        chars.join.gsub(/([\-\\^])/) { |m| "\\#{m}" }
+        chars.join.gsub(/([\-\\^])/) { |match| "\\#{match}" }
       end
 
       private def setup_seps

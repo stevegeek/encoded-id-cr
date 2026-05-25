@@ -1,4 +1,4 @@
-require "./isolated_helper"
+require "./spec_helper"
 
 describe EncodedId::Alphabet do
   describe ".modified_crockford" do
@@ -46,6 +46,20 @@ describe EncodedId::Alphabet do
       alphabet = EncodedId::Alphabet.new(chars)
       alphabet.size.should eq(16)
       alphabet.unique_characters.should eq(chars)
+    end
+
+    it "rejects multi-character entries (review §4)" do
+      # Regression for MED §4: previously `Alphabet.new(["abc","def"])` silently
+      # constructed a misshapen alphabet whose `size` lied.
+      expect_raises(EncodedId::InvalidAlphabetError, /single-character/) do
+        EncodedId::Alphabet.new(["abc", "def"])
+      end
+    end
+
+    it "rejects empty-string entries" do
+      expect_raises(EncodedId::InvalidAlphabetError, /single-character/) do
+        EncodedId::Alphabet.new(["a", "", "b"])
+      end
     end
   end
 

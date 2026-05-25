@@ -20,8 +20,26 @@ module EncodedId
       ) : Array(Int32)
         salt_part_1_length = salt_part_1.size
 
-        if salt_part_1_length < max_salt_length && salt_part_2.nil?
-          raise SaltError.new("Salt is too short in shuffle")
+        # MED §7: defensive size validation. Every internal caller passes a
+        # correctly-sized buffer today; but historically only the nil-check on
+        # salt_part_2 ran here, so a future caller passing an undersized
+        # salt_part_2 (or a salt_part_1 shorter than max_salt_length with
+        # `salt_part_2.size + salt_part_1.size < max_salt_length`) would crash
+        # later with `IndexError` from the indexed access on line ~37 below.
+        # Convert that into a useful `SaltError` up front.
+        if salt_part_1_length < max_salt_length
+          sp2 = salt_part_2
+          if sp2.nil?
+            raise SaltError.new("Salt is too short in shuffle")
+          end
+          required_part_2 = max_salt_length - salt_part_1_length
+          if sp2.size < required_part_2
+            raise SaltError.new(
+              "Salt is too short in shuffle (salt_part_1.size=#{salt_part_1_length}, " \
+              "salt_part_2.size=#{sp2.size}, max_salt_length=#{max_salt_length}; " \
+              "need salt_part_2.size >= #{required_part_2})"
+            )
+          end
         end
 
         return collection_to_shuffle if collection_to_shuffle.empty? || max_salt_length == 0 || salt_part_1_length == 0

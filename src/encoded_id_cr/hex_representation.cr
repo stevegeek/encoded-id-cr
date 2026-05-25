@@ -42,6 +42,13 @@ module EncodedId
     def hex_as_integers(hexes : Array(String)) : Array(Int64)
       digits_to_encode = [] of Int64
       hexes.each do |hex_string|
+        # MED §6: previously empty entries were silently dropped on round-trip
+        # — e.g. `hex_as_integers(["", "abc"])` returned `[2748]` and the
+        # leading "" disappeared. Silent data loss is worse than a loud error,
+        # so reject empty entries up front.
+        if hex_string.empty?
+          raise ArgumentError.new("Empty hex string is not encodable (silent data loss); reject it before calling hex_as_integers")
+        end
         digits_to_encode.concat(hex_string_as_integer_groups(hex_string))
         digits_to_encode << hex_string_separator
       end
@@ -90,12 +97,12 @@ module EncodedId
       # the configured size, then unshift each char to keep the groups in the
       # correct (left-to-right within each group) order.
       groups = [] of Array(Char)
-      hex_cleaned.chars.reverse!.each_with_index do |ch, idx|
+      hex_cleaned.chars.reverse!.each_with_index do |char, idx|
         group_id = idx // @hex_digit_encoding_group_size
         while groups.size <= group_id
           groups << ([] of Char)
         end
-        groups[group_id].unshift(ch)
+        groups[group_id].unshift(char)
       end
       groups.map(&.join.to_i64(16))
     end

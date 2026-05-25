@@ -15,6 +15,16 @@ describe EncodedId::Blocklist do
     it "is memoised" do
       EncodedId::Blocklist.empty.should be EncodedId::Blocklist.empty
     end
+
+    it "doesn't leak mutations through #words to other callers (review §5)" do
+      # Regression for MED §5: the memoised `.empty` / `.minimal` singletons
+      # share their internal `@words` set process-wide. `words` must hand back
+      # a copy so callers can't accidentally corrupt the singleton.
+      first = EncodedId::Blocklist.empty.words
+      first.add("trojan")
+      EncodedId::Blocklist.empty.words.should be_empty
+      EncodedId::Blocklist.empty.size.should eq 0
+    end
   end
 
   describe ".minimal" do
@@ -31,6 +41,15 @@ describe EncodedId::Blocklist do
       bl.blocks?("#{sample}-1234").should eq sample
       bl.blocks?("abcd#{sample.upcase}s").should eq sample
       bl.blocks?("Hello").should be_nil
+    end
+
+    it "doesn't leak mutations through #words to other callers (review §5)" do
+      # Regression for MED §5: even on the canonical profanity list, callers
+      # can't widen the singleton mid-process.
+      original_size = EncodedId::Blocklist.minimal.size
+      EncodedId::Blocklist.minimal.words.add("zzzzzz-not-a-real-word")
+      EncodedId::Blocklist.minimal.size.should eq original_size
+      EncodedId::Blocklist.minimal.include?("zzzzzz-not-a-real-word").should be_false
     end
   end
 

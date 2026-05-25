@@ -51,6 +51,18 @@ describe EncodedId::HexRepresentation do
     it "filters non-hex characters before encoding" do
       HEX.hex_as_integers("c0-ff:ee").should eq HEX.hex_as_integers("c0ffee")
     end
+
+    it "rejects empty hex entries instead of silently dropping them (review §6)" do
+      # Regression for MED §6: previously `hex_as_integers(["", "abc"])`
+      # silently dropped the leading empty entry. Silent data loss is worse
+      # than a loud error.
+      expect_raises(ArgumentError, /Empty hex string/) do
+        HEX.hex_as_integers(["", "abc"])
+      end
+      expect_raises(ArgumentError, /Empty hex string/) do
+        HEX.hex_as_integers(["abc", ""])
+      end
+    end
   end
 end
 

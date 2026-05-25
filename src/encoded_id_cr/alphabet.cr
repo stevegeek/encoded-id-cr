@@ -36,8 +36,16 @@ module EncodedId
     end
 
     # Construct from an Array of single-character Strings.
+    #
+    # Rejects multi-character entries (e.g. `["abc","def"]`) up front. Previously
+    # such input silently constructed an alphabet whose `size` lied (entries are
+    # tracked individually but each "character" contained multiple codepoints),
+    # producing broken encodes/decodes. (review §4)
     def initialize(characters : Array(String), equivalences : Hash(String, String)? = nil)
       raise InvalidAlphabetError.new("Alphabet must be a populated string or array") unless characters.size > 0
+      unless characters.all? { |char| char.size == 1 }
+        raise InvalidAlphabetError.new("Alphabet array entries must each be single-character strings")
+      end
       @unique_characters = characters.uniq
       validate!(equivalences)
       @characters = @unique_characters.join
@@ -53,7 +61,9 @@ module EncodedId
     end
 
     def to_s : String
-      @characters.dup
+      # `String` is immutable in Crystal, so returning `@characters` directly
+      # is safe — no need to `dup`. (review LOW)
+      @characters
     end
 
     def to_s(io : IO) : Nil
@@ -85,9 +95,9 @@ module EncodedId
     # of using `Char#whitespace?` (which also accepts `\v`).
     private def valid_characters? : Bool
       return false if @unique_characters.empty?
-      @unique_characters.none? do |c|
-        c.each_char.any? do |ch|
-          case ch
+      @unique_characters.none? do |entry|
+        entry.each_char.any? do |char|
+          case char
           when ' ', '\t', '\n', '\r', '\f', '\0' then true
           else                                        false
           end
