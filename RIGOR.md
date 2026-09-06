@@ -16,9 +16,9 @@ Ierodiaconou.**
 
 EncodedId is a Crystal port of my Ruby gem encoded_id. It encodes integer IDs,
 or hex strings such as UUIDs, into short, obfuscated, reversible strings that
-are suitable for URLs. The design comes from the Ruby gem, which I wrote. The
-port was vibe-coded: an AI planned it, wrote it and tested it. I have run it,
-but I have not read the code, and no human has reviewed it.
+are suitable for URLs. The design comes from the Ruby gem, which I wrote. An AI
+planned, wrote and tested the port. I have run it, but I have not read the code,
+and no human has reviewed it.
 
 The port is not yet complete. It is still evolving, and the changes are made by
 an AI. I make no recommendation either way.
