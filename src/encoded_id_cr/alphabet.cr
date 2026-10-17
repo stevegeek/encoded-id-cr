@@ -2,6 +2,9 @@ module EncodedId
   # Represents a character set (alphabet) used for encoding IDs, with optional
   # character equivalences. Port of EncodedId::Alphabet from the Ruby gem.
   class Alphabet
+    # The minimum alphabet size depends on the encoder, see
+    # `Encoders::Hashid::MIN_ALPHABET_SIZE` and `Encoders::Sqids::MIN_ALPHABET_SIZE`.
+    @[Deprecated("Use Encoders::Hashid::MIN_ALPHABET_SIZE or Encoders::Sqids::MIN_ALPHABET_SIZE")]
     MIN_UNIQUE_CHARACTERS = 16
 
     # Factory: the modified Crockford Base32 alphabet, with the canonical
@@ -85,7 +88,6 @@ module EncodedId
 
     private def validate!(equivalences : Hash(String, String)?)
       raise InvalidAlphabetError.new("Alphabet must not contain whitespace or null characters.") unless valid_characters?
-      raise InvalidAlphabetError.new("Alphabet must contain at least #{MIN_UNIQUE_CHARACTERS} unique characters.") unless sufficient_characters?
       raise InvalidConfigurationError.new("Character equivalences must be a hash or nil and contain mappings to valid alphabet characters.") unless valid_equivalences?(equivalences)
     end
 
@@ -103,10 +105,6 @@ module EncodedId
           end
         end
       end
-    end
-
-    private def sufficient_characters? : Bool
-      @unique_characters.size >= MIN_UNIQUE_CHARACTERS
     end
 
     # Validates equivalences: keys/values must be 1-char strings, keys must NOT
