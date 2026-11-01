@@ -59,7 +59,7 @@ EncodedId::ReversibleId.sqids(
 A `cr_encoded_id` binary is built via `shards build`:
 
 ```bash
-CRYSTAL_LIBRARY_PATH=$HOME/.asdf/installs/crystal/1.20.1/embedded/lib shards build cr_encoded_id
+CRYSTAL_LIBRARY_PATH=$(asdf where crystal)/embedded/lib shards build cr_encoded_id
 # => bin/cr_encoded_id
 ```
 
