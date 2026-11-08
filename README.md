@@ -59,11 +59,11 @@ EncodedId::ReversibleId.sqids(
 A `cr_encoded_id` binary is built via `shards build`:
 
 ```bash
-CRYSTAL_LIBRARY_PATH=$(asdf where crystal)/embedded/lib shards build cr_encoded_id
+shards build cr_encoded_id
 # => bin/cr_encoded_id
 ```
 
-(The `CRYSTAL_LIBRARY_PATH` prefix is needed because asdf 0.18 doesn't propagate the embedded libgc path. See `script/cr` for the same workaround applied to one-off `crystal` calls.)
+With Crystal installed through asdf 0.18, the build cannot find the embedded libgc. Prefix the command with `CRYSTAL_LIBRARY_PATH=$(asdf where crystal)/embedded/lib`. `script/cr` applies the same workaround to one-off `crystal` calls.
 
 Then:
 
@@ -89,7 +89,7 @@ script/cr build src/encoded_id_cr.cr -o /tmp/check    # type-check the library
 shards build cr_encoded_id   # rebuild the CLI
 ```
 
-`script/cr` is a thin wrapper around `crystal` that exports `CRYSTAL_LIBRARY_PATH` for asdf 0.18 compatibility.
+`script/cr` is a thin wrapper around `crystal`. When Crystal comes from asdf, it adds the install's embedded libgc to `CRYSTAL_LIBRARY_PATH` for asdf 0.18 compatibility; otherwise it runs `crystal` unchanged.
 
 ## Compatibility note
 

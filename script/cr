@@ -3,6 +3,8 @@
 # Needed because asdf 0.18 (Go-based) bypasses the upstream asdf-crystal bash wrapper.
 set -euo pipefail
 
-CRYSTAL_INSTALL="$(asdf where crystal)"
-export CRYSTAL_LIBRARY_PATH="${CRYSTAL_LIBRARY_PATH:+$CRYSTAL_LIBRARY_PATH:}${CRYSTAL_INSTALL}/embedded/lib"
+if command -v asdf > /dev/null 2>&1 && CRYSTAL_INSTALL="$(asdf where crystal 2> /dev/null)" &&
+  [ -d "${CRYSTAL_INSTALL}/embedded/lib" ]; then
+  export CRYSTAL_LIBRARY_PATH="${CRYSTAL_LIBRARY_PATH:+$CRYSTAL_LIBRARY_PATH:}${CRYSTAL_INSTALL}/embedded/lib"
+fi
 exec crystal "$@"
