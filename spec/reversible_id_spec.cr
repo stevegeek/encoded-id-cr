@@ -91,6 +91,55 @@ describe EncodedId::ReversibleId do
         id.decode("aaaaaaaa")
       end
     end
+
+    it "decodes with case sensitivity" do
+      alphabet = EncodedId::Alphabet.new(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "a", "b", "c", "d", "e"])
+      id = EncodedId::ReversibleId.sqids(alphabet: alphabet)
+      id.encode(101).should eq "c7a1-271b"
+      id.decode("c7a1-271b", downcase: false).should eq [101_i64]
+      id.decode("c7A1-271b", downcase: true).should eq [101_i64]
+      id.decode("c7A1-271b", downcase: false).should_not eq [101_i64]
+
+      id.encode(123).should eq "4ecb-5dAe"
+      id.decode("4ecb-5dAe", downcase: false).should eq [123_i64]
+      id.decode("4ecb-5dAe", downcase: true).should eq [] of Int64
+    end
+
+    it "returns [] of Int64 when decoding a string it did not issue" do
+      id = EncodedId::ReversibleId.sqids
+      id.encode(42).should eq "0g69-n738"
+      id.decode("42").should eq [] of Int64
+    end
+
+    it "decodes its own encoding after normalisation" do
+      id = EncodedId::ReversibleId.sqids
+      encoded = id.encode(42)
+      id.decode(encoded.delete('-')).should eq [42_i64]
+      id.decode(encoded.upcase, downcase: true).should eq [42_i64]
+      id.decode(encoded.tr("0", "o")).should eq [42_i64]
+    end
+
+    it "returns empty when decoding a string whose value is out of range" do
+      id = EncodedId::ReversibleId.sqids
+      id.decode("zzzzzzzzzzzzzzzzzz").should eq [] of Int64
+      id.decode_hex("zzzzzzzzzzzzzzzzzz").should eq [] of String
+    end
+
+    it "raises InvalidAlphabetError with an alphabet of two characters" do
+      expect_raises(EncodedId::InvalidAlphabetError, /at least 3 unique characters/) do
+        EncodedId::ReversibleId.sqids(alphabet: EncodedId::Alphabet.new("ab"))
+      end
+    end
+
+    it "accepts an alphabet of three characters" do
+      id = EncodedId::ReversibleId.sqids(alphabet: EncodedId::Alphabet.new("abc"), split_at: nil)
+      id.decode(id.encode([1, 2, 123456])).should eq [1_i64, 2_i64, 123456_i64]
+    end
+
+    it "encodes and decodes with a small alphabet" do
+      id = EncodedId::ReversibleId.sqids(alphabet: EncodedId::Alphabet.new("abcdefghij"))
+      id.decode(id.encode([1, 2, 123456])).should eq [1_i64, 2_i64, 123456_i64]
+    end
   end
 
   describe ".hashid" do
@@ -136,6 +185,17 @@ describe EncodedId::ReversibleId do
       # empty array" all the way through the facade.
       id = EncodedId::ReversibleId.hashid(salt: "test")
       id.decode("a" * 30).should eq([] of Int64)
+    end
+
+    it "raises InvalidAlphabetError with an alphabet of fifteen characters" do
+      expect_raises(EncodedId::InvalidAlphabetError, "Hashids requires an alphabet of at least 16 unique characters.") do
+        EncodedId::ReversibleId.hashid(salt: "this is my salt", alphabet: EncodedId::Alphabet.new("0123456789abcde"))
+      end
+    end
+
+    it "accepts an alphabet of sixteen characters" do
+      id = EncodedId::ReversibleId.hashid(salt: "this is my salt", alphabet: EncodedId::Alphabet.new("0123456789abcdef"))
+      id.decode(id.encode([1, 2, 123456])).should eq [1_i64, 2_i64, 123456_i64]
     end
   end
 end
