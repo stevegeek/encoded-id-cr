@@ -11,3 +11,10 @@ license: MIT
 targets:
   cr_encoded_id:
     main: src/cli.cr
+  ameba:
+    main: lib/ameba/bin/ameba.cr
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.7.0
