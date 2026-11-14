@@ -97,16 +97,17 @@ describe EncodedId::Alphabet do
       end
     end
 
-    it "rejects fewer than 16 unique characters" do
-      expect_raises(EncodedId::InvalidAlphabetError, "16 unique") do
-        EncodedId::Alphabet.new("0123456789abcde")
-      end
+    it "accepts fewer than 16 unique characters" do
+      EncodedId::Alphabet.new("abc").characters.should eq("abc")
+      EncodedId::Alphabet.new("1234").size.should eq(4)
     end
 
-    it "rejects when post-dedup uniques fall below 16" do
+    it "counts only unique characters" do
       # 16 characters but only 15 unique (final 'e' is a repeat)
-      expect_raises(EncodedId::InvalidAlphabetError, "16 unique") do
-        EncodedId::Alphabet.new("0123456789abcdee")
+      alphabet = EncodedId::Alphabet.new("0123456789abcdee")
+      alphabet.size.should eq(15)
+      expect_raises(EncodedId::InvalidAlphabetError) do
+        EncodedId::ReversibleId.hashid(salt: "my-salt", alphabet: alphabet)
       end
     end
   end

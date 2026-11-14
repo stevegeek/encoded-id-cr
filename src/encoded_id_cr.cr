@@ -3,9 +3,11 @@ module EncodedId
 
   class Error < Exception; end
 
-  class InvalidAlphabetError < Error; end
-
   class InvalidConfigurationError < Error; end
+
+  # Subclasses `InvalidConfigurationError` so callers rescuing that class
+  # still catch alphabet-size errors raised by `Encoders::Sqids`.
+  class InvalidAlphabetError < InvalidConfigurationError; end
 
   class InvalidInputError < Error; end
 

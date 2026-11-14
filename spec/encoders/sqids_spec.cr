@@ -18,6 +18,13 @@ describe EncodedId::Encoders::Sqids do
       encoder.encode([123_i64, 456_i64, 789_i64]).should eq("qa1u2mqvb")
     end
 
+    it "does not change later encodings after encoding an id whose offset is 0" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      encoder.encode([10_i64]).should eq("gq2nkv4s")
+      encoder.encode([123_i64]).should eq("37vq3u7t")
+      encoder.decode("gq2nkv4s").should eq([10_i64])
+    end
+
     it "returns empty string for empty input" do
       encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
       encoder.encode([] of Int64).should eq("")
@@ -74,17 +81,45 @@ describe EncodedId::Encoders::Sqids do
     end
 
     it "returns [] of Int64 (not garbage integers) for a long overflowing alphabet-only input" do
-      # Sqids has no roundtrip-verify step (Hashid does), by design and matching
-      # the Ruby parent gem. This spec only proves the *overflow* path returns
-      # `[] of Int64`. A shorter alphabet-valid garbage input can still produce
-      # non-empty integer arrays — `result.empty?` is NOT a safe "valid id?"
-      # predicate for Sqids. If you need that guarantee, encode → decode →
-      # re-encode and compare, or use Hashid which has a built-in roundtrip
-      # check.
       encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
       result = encoder.decode("z" * 80)
       result.should eq([] of Int64)
       result.empty?.should be_true
+    end
+
+    it "returns [] of Int64 when decoding a string that is not a canonical encoding" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      encoder.decode("42").should eq([] of Int64)
+      encoder.decode("37vq3u7tx").should eq([] of Int64)
+    end
+
+    it "only decodes strings that round-trip" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      chars = MODIFIED_CROCKFORD.chars
+      chars.each do |a|
+        chars.each do |b|
+          candidate = "#{a}#{b}"
+          decoded = encoder.decode(candidate)
+          next if decoded.empty?
+          encoder.encode(decoded).should eq(candidate)
+        end
+      end
+    end
+
+    it "rejects the blocked encoding and accepts the reissued one" do
+      unblocked = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD).encode([123_i64])
+      blocklist = EncodedId::Blocklist.new([unblocked[0, 4]])
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD, blocklist)
+      reissued = encoder.encode([123_i64])
+
+      reissued.should_not eq(unblocked)
+      encoder.decode(reissued).should eq([123_i64])
+      encoder.decode(unblocked).should eq([] of Int64)
+    end
+
+    it "returns [] of Int64 when decoding a string whose value is out of range" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      encoder.decode("zzzzzzzzzzzzzzzzzz").should eq([] of Int64)
     end
   end
 
@@ -116,9 +151,14 @@ describe EncodedId::Encoders::Sqids do
       end
     end
 
-    it "raises InvalidConfigurationError when the alphabet is shorter than 3 characters" do
-      # Regression for HIGH §3: the canonical Sqids minimum is 3.
-      expect_raises(EncodedId::InvalidConfigurationError, /at least 3 chars/) do
+    it "raises InvalidAlphabetError when the alphabet is shorter than 3 characters" do
+      expect_raises(EncodedId::InvalidAlphabetError, "Sqids requires an alphabet of at least 3 unique characters.") do
+        EncodedId::Encoders::Sqids.new(8, "ab")
+      end
+    end
+
+    it "still raises an InvalidConfigurationError for a too-short alphabet" do
+      expect_raises(EncodedId::InvalidConfigurationError) do
         EncodedId::Encoders::Sqids.new(8, "ab")
       end
     end

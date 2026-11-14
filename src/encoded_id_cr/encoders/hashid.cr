@@ -21,6 +21,8 @@ module EncodedId
     end
 
     class Hashid
+      MIN_ALPHABET_SIZE = 16
+
       include HashidConsistentShuffle
 
       getter alphabet_ordinals : Array(Int32)
@@ -46,6 +48,9 @@ module EncodedId
         @blocklist_mode : BlocklistMode = BlocklistMode::LengthThreshold,
         @blocklist_max_length : Int32 = 32,
       )
+        if alphabet.size < MIN_ALPHABET_SIZE
+          raise InvalidAlphabetError.new("Hashids requires an alphabet of at least #{MIN_ALPHABET_SIZE} unique characters.")
+        end
         if @min_hash_length < 0
           raise ArgumentError.new("The min length must be a Integer and greater than or equal to 0")
         end
