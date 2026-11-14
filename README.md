@@ -19,6 +19,18 @@ The internal Sqids and Hashids encoders are **byte-for-byte compatible** with th
 | Configuration objects (`HashidConfiguration`, etc.) | replaced by direct kwargs |
 | Rails integration (`encoded_id-rails`) | out of scope |
 
+## Installation
+
+Add the dependency to your `shard.yml`:
+
+```yaml
+dependencies:
+  encoded_id_cr:
+    github: stevegeek/encoded_id_cr
+```
+
+Then run `shards install`. The shard is `encoded_id_cr`; the module it defines is `EncodedId`.
+
 ## Library usage
 
 ```crystal
@@ -31,7 +43,7 @@ id.decode("37vq-3u7t")                  # => [123_i64]
 id.encode([123_i64, 456_i64, 789_i64])  # => humanised "qa1u-2mqv-b…"
 
 # Hashids (salt required)
-hid = EncodedId::ReversibleId.hashid(salt: "this is my salt")
+hid = EncodedId::ReversibleId.hashid(salt: "foo")
 hid.encode(12345)                       # => "9da2-a7an"
 hid.decode("9da2-a7an")                 # => [12345_i64]
 
@@ -53,6 +65,10 @@ EncodedId::ReversibleId.sqids(
   max_length: 64,
 )
 ```
+
+`decode` returns `[]` for a string it does not recognise. It raises `EncodedIdFormatError` for input longer than `max_length`, or for Hashids input with characters outside the alphabet.
+
+`encode` raises `InvalidInputError` (empty, negative or too many inputs), `EncodedIdLengthError` (result longer than `max_length`) or `BlocklistError` (Hashids output contains a blocklisted word).
 
 ## CLI
 
@@ -84,7 +100,7 @@ The encoder is chosen based on whether you pass `--salt`: with a salt it's Hashi
 ## Development
 
 ```bash
-script/cr spec      # 106 specs, all green
+script/cr spec      # run the specs
 script/cr build src/encoded_id_cr.cr -o /tmp/check    # type-check the library
 shards build cr_encoded_id   # rebuild the CLI
 ```
