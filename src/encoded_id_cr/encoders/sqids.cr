@@ -23,33 +23,47 @@ require "./blocklist_default"
 #     produced (bounded by alphabet length).
 #
 # This Crystal port operates on `Int32` codepoints (single-byte alphabets only,
-# which the constructor enforces) and `Int64` input numbers (Ruby's arbitrary-
-# precision Integer is approximated; values must fit in `Int64`).
+# which the constructor enforces) and `Int64` input numbers (values must not
+# exceed `MAX_VALUE`, the Ruby gem's limit).
 module EncodedId
   module Encoders
     class Sqids
+      MIN_ALPHABET_SIZE = 3
+
+      # The Ruby gem's limit (2**62 - 1), below `Int64::MAX`, so that IDs
+      # stay decodable by the gem.
+      MAX_VALUE = 4_611_686_018_427_387_903_i64
+
       # Shuffled alphabet, stored as codepoints (single-byte chars => Int32).
       @alphabet : Array(Int32)
       @min_length : Int32
       # Set for O(1) membership tests; lowercased for case-insensitive matching.
       @blocklist : Set(String)
+      @blocklist_mode : BlocklistMode
+      @blocklist_max_length : Int32
 
       # Build a new encoder.
       #
       # `alphabet_chars` is the raw alphabet string (single-byte ASCII only).
-      # The alphabet must contain unique characters and be at least 3 chars
-      # long (canonical Sqids minimum). Duplicate characters silently break
-      # round-trips; multibyte characters aren't supported. Other higher-level
-      # alphabet semantics belong in the `Alphabet` wrapper.
+      # The alphabet must contain unique characters and be at least
+      # `MIN_ALPHABET_SIZE` chars long (canonical Sqids minimum). Duplicate
+      # characters silently break round-trips; multibyte characters aren't
+      # supported. Other higher-level alphabet semantics belong in the
+      # `Alphabet` wrapper.
       #
       # `blocklist` accepts either a `Blocklist` instance or a raw
       # `Array(String)`. Both flow through `Blocklist#filter_for_alphabet`,
       # which centralises the "size >= 3 AND only contains alphabet chars"
       # filter rule that Sqids and Hashid share. (review LOW dedup)
+      #
+      # `blocklist_mode` and `blocklist_max_length` work as in `Hashid`. The
+      # default, `Always`, is the Ruby gem's `MySqids` behaviour.
       def initialize(
         min_length : Int32,
         alphabet_chars : String,
         blocklist : Blocklist | Array(String) = DEFAULT_BLOCKLIST,
+        @blocklist_mode : BlocklistMode = BlocklistMode::Always,
+        @blocklist_max_length : Int32 = 32,
       )
         validate_alphabet!(alphabet_chars)
         validate_min_length!(min_length)
@@ -83,6 +97,9 @@ module EncodedId
             "encoded_id does not support negative integers"
           )
         end
+        if numbers.any? { |number| number > MAX_VALUE }
+          raise EncodedId::InvalidInputError.new("Sqids can only encode integers up to #{MAX_VALUE}")
+        end
 
         encode_numbers(numbers, 0)
       end
@@ -92,12 +109,28 @@ module EncodedId
       # Invalid characters or malformed input return an empty array (this is
       # the Ruby gem's contract — it never raises for bad strings).
       #
-      # Decodes any input that produces a value ≤ `Int64::MAX`. Attacker-
-      # controlled inputs ~30+ alphabet-only chars long can produce a base-N
-      # reconstruction that exceeds `Int64::MAX`; that surfaces as
+      # Only canonical encodings decode: the result is re-encoded and an empty
+      # array is returned unless it reproduces `s` exactly, so strings that
+      # were never issued by this configuration (e.g. "42") do not resolve.
+      #
+      # Attacker-controlled inputs ~30+ alphabet-only chars long can produce a
+      # base-N reconstruction that exceeds `Int64::MAX`; that surfaces as
       # `DecodePayloadOverflowError` from `to_number` and is converted back to
       # an empty array here.
       def decode(s : String) : Array(Int64)
+        decoded = decode_numbers(s)
+        return decoded if decoded.empty?
+        return [] of Int64 if decoded.any? { |number| number > MAX_VALUE }
+        return [] of Int64 if encode_numbers(decoded, 0) != s
+
+        decoded
+      rescue EncodedId::DecodePayloadOverflowError
+        [] of Int64
+      end
+
+      # ----- private -----
+
+      private def decode_numbers(s : String) : Array(Int64)
         ret = [] of Int64
         return ret if s.empty?
 
@@ -130,11 +163,7 @@ module EncodedId
         end
 
         ret
-      rescue EncodedId::DecodePayloadOverflowError
-        [] of Int64
       end
-
-      # ----- private -----
 
       private def validate_alphabet!(alphabet_chars : String)
         # Crystal's String#chars iterates Unicode codepoints (Char). A multibyte
@@ -150,9 +179,9 @@ module EncodedId
         # Canonical Sqids minimum (matches the upstream reference impl).
         # Anything shorter cannot host the reserved separator + at least two
         # alphabet positions and would round-trip nonsense.
-        if alphabet_chars.size < 3
-          raise EncodedId::InvalidConfigurationError.new(
-            "Sqids alphabet must be at least 3 chars"
+        if alphabet_chars.size < MIN_ALPHABET_SIZE
+          raise EncodedId::InvalidAlphabetError.new(
+            "Sqids requires an alphabet of at least #{MIN_ALPHABET_SIZE} unique characters."
           )
         end
 
@@ -305,6 +334,7 @@ module EncodedId
       #   - word contains a digit: only match at the boundaries (start/end)
       #   - otherwise: substring match anywhere
       private def blocked_id?(id : String) : Bool
+        return false if @blocklist_mode.length_threshold? && id.size > @blocklist_max_length
         id_down = id.downcase
         @blocklist.any? do |word|
           if word.size <= id_down.size
@@ -324,14 +354,12 @@ module EncodedId
       # Rotate `alphabet` left by `offset` positions, then reverse. Returns a
       # fresh array (caller may mutate freely).
       private def rotate_and_reverse_alphabet(alphabet : Array(Int32), offset : Int32) : Array(Int32)
-        # Crystal's Array#rotate(n) returns a new rotated array (Ruby's
-        # rotate! mutates; we don't want to mutate @alphabet).
+        # Crystal's Array#rotate returns `self` (not a copy) when the
+        # effective offset is 0, so copy first to never mutate @alphabet.
         # Normalize offset for safety; modulo of any Int32 by size is in range.
         n = alphabet.size
         eff = offset % n
-        rotated = alphabet.rotate(eff)
-        rotated.reverse!
-        rotated
+        alphabet.dup.rotate!(eff).reverse!
       end
     end
   end

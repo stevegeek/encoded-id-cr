@@ -3,9 +3,11 @@ module EncodedId
 
   class Error < Exception; end
 
-  class InvalidAlphabetError < Error; end
-
   class InvalidConfigurationError < Error; end
+
+  # Subclasses `InvalidConfigurationError` so callers rescuing that class
+  # still catch alphabet-size errors raised by `Encoders::Sqids`.
+  class InvalidAlphabetError < InvalidConfigurationError; end
 
   class InvalidInputError < Error; end
 
@@ -30,6 +32,7 @@ require "./encoded_id_cr/alphabet"
 require "./encoded_id_cr/blocklist"
 require "./encoded_id_cr/char_helpers"
 require "./encoded_id_cr/hex_representation"
+require "./encoded_id_cr/tagged_hex_representation"
 require "./encoded_id_cr/encoders/sqids"
 require "./encoded_id_cr/encoders/hashid_salt"
 require "./encoded_id_cr/encoders/hashid_consistent_shuffle"

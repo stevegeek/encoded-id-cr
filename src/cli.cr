@@ -15,6 +15,7 @@ require "./encoded_id_cr"
 #   cr_encoded_id encode_hex 550e8400e29b41d4a716446655440000
 #   cr_encoded_id encode_hex 1A2B --salt foo
 #   cr_encoded_id decode_hex <encoded> --salt foo
+#   cr_encoded_id decode_hex <encoded> --hex-encoding legacy
 class CrEncodedIdCli
   enum Mode
     Encode
@@ -31,6 +32,7 @@ class CrEncodedIdCli
   property? no_humanize : Bool = false
   property values : Array(String) = [] of String
   property hex_values : Array(String) = [] of String
+  property hex_encoding : EncodedId::HexEncoding = EncodedId::HexEncoding::Tagged
 
   def parse(argv : Array(String))
     OptionParser.parse(argv) do |parser|
@@ -59,6 +61,9 @@ class CrEncodedIdCli
       parser.on("--min-length=N", "Minimum encoded length (default 8)") { |v| @min_length = v.to_i }
       parser.on("--no-humanize", "Disable separator insertion") { @no_humanize = true }
       parser.on("--hex=HEX", "Hex string to encode (alternative to positional arg; may be repeated)") { |v| @hex_values << v }
+      parser.on("--hex-encoding=NAME", "Hex encoding: 'tagged' (default) or 'legacy'") do |v|
+        @hex_encoding = EncodedId::HexEncoding.parse?(v) || (STDERR.puts("Unknown hex encoding: #{v}"); exit 2)
+      end
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -98,12 +103,14 @@ class CrEncodedIdCli
         alphabet: alphabet,
         min_hash_length: @min_length,
         split_at: split_at,
+        hex_encoding: @hex_encoding,
       )
     else
       EncodedId::ReversibleId.sqids(
         alphabet: alphabet,
         min_length: @min_length,
         split_at: split_at,
+        hex_encoding: @hex_encoding,
       )
     end
   end
