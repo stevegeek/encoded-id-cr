@@ -32,7 +32,9 @@ module EncodedId
     def self.sqids(
       alphabet : Alphabet = Alphabet.modified_crockford,
       min_length : Int32 = 8,
-      blocklist : Blocklist | Array(String) = Encoders::Sqids::DEFAULT_BLOCKLIST,
+      blocklist : Blocklist | Array(String) = Blocklist.empty,
+      blocklist_mode : Encoders::BlocklistMode = Encoders::BlocklistMode::LengthThreshold,
+      blocklist_max_length : Int32 = 32,
       split_at : Int32? = 4,
       split_with : String = "-",
       max_inputs_per_id : Int32 = 32,
@@ -40,7 +42,7 @@ module EncodedId
       hex_digit_encoding_group_size : Int32 = 4,
       hex_encoding : HexEncoding = HexEncoding::Tagged,
     ) : ReversibleId
-      encoder = Encoders::Sqids.new(min_length, alphabet.characters, blocklist)
+      encoder = Encoders::Sqids.new(min_length, alphabet.characters, blocklist, blocklist_mode, blocklist_max_length)
       new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size, hex_encoding)
     end
 

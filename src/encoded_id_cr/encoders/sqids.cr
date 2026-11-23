@@ -39,6 +39,8 @@ module EncodedId
       @min_length : Int32
       # Set for O(1) membership tests; lowercased for case-insensitive matching.
       @blocklist : Set(String)
+      @blocklist_mode : BlocklistMode
+      @blocklist_max_length : Int32
 
       # Build a new encoder.
       #
@@ -53,10 +55,15 @@ module EncodedId
       # `Array(String)`. Both flow through `Blocklist#filter_for_alphabet`,
       # which centralises the "size >= 3 AND only contains alphabet chars"
       # filter rule that Sqids and Hashid share. (review LOW dedup)
+      #
+      # `blocklist_mode` and `blocklist_max_length` work as in `Hashid`. The
+      # default, `Always`, is the Ruby gem's `MySqids` behaviour.
       def initialize(
         min_length : Int32,
         alphabet_chars : String,
         blocklist : Blocklist | Array(String) = DEFAULT_BLOCKLIST,
+        @blocklist_mode : BlocklistMode = BlocklistMode::Always,
+        @blocklist_max_length : Int32 = 32,
       )
         validate_alphabet!(alphabet_chars)
         validate_min_length!(min_length)
@@ -327,6 +334,7 @@ module EncodedId
       #   - word contains a digit: only match at the boundaries (start/end)
       #   - otherwise: substring match anywhere
       private def blocked_id?(id : String) : Bool
+        return false if @blocklist_mode.length_threshold? && id.size > @blocklist_max_length
         id_down = id.downcase
         @blocklist.any? do |word|
           if word.size <= id_down.size

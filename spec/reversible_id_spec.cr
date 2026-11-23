@@ -147,6 +147,36 @@ describe EncodedId::ReversibleId do
       id.decode(encoded.tr("0", "o")).should eq [42_i64]
     end
 
+    it "uses no blocklist by default, like the Ruby gem" do
+      id = EncodedId::ReversibleId.sqids
+      id.encode(58849).should eq "gtwa-t2nk"
+      id.decode("gtwa-t2nk").should eq [58849_i64]
+      id.encode(74700).should eq "ycra-pd6m"
+      id.decode("ycra-pd6m").should eq [74700_i64]
+    end
+
+    it "checks the blocklist only for ids up to blocklist_max_length characters by default" do
+      short_only = EncodedId::ReversibleId.sqids(blocklist: ["twat"], blocklist_max_length: 7)
+      short_only.encode(58849).should eq "gtwa-t2nk"
+      short_only.decode("gtwa-t2nk").should eq [58849_i64]
+
+      checked = EncodedId::ReversibleId.sqids(blocklist: ["twat"], blocklist_max_length: 8)
+      reissued = checked.encode(58849)
+      reissued.should_not eq "gtwa-t2nk"
+      checked.decode(reissued).should eq [58849_i64]
+      checked.decode("gtwa-t2nk").should eq [] of Int64
+    end
+
+    it "checks the blocklist for ids of any length with blocklist_mode Always" do
+      id = EncodedId::ReversibleId.sqids(
+        blocklist: ["twat"],
+        blocklist_mode: EncodedId::Encoders::BlocklistMode::Always,
+        blocklist_max_length: 7,
+      )
+      id.encode(58849).should_not eq "gtwa-t2nk"
+      id.decode("gtwa-t2nk").should eq [] of Int64
+    end
+
     it "returns empty when decoding a string whose value is out of range" do
       id = EncodedId::ReversibleId.sqids
       id.decode("zzzzzzzzzzzzzzzzzz").should eq [] of Int64

@@ -71,9 +71,9 @@ EncodedId::ReversibleId.sqids(
 )
 ```
 
-`decode` returns `[]` for a string it does not recognise. It raises `EncodedIdFormatError` for input longer than `max_length`, or for Hashids input with characters outside the alphabet.
+`decode` returns `[]` for a string it does not recognise. It raises `EncodedIdFormatError` for input longer than `max_length`.
 
-`encode` raises `InvalidInputError` (empty, negative or too many inputs), `EncodedIdLengthError` (result longer than `max_length`) or `BlocklistError` (Hashids output contains a blocklisted word).
+`encode` raises `InvalidInputError` (empty, negative, non-integer or too many inputs, or a Sqids value above `Encoders::Sqids::MAX_VALUE`), `EncodedIdLengthError` (result longer than `max_length`) or `BlocklistError` (Hashids output contains a blocklisted word).
 
 ## CLI
 
@@ -119,5 +119,7 @@ This port follows the Ruby gem's 2.0 behaviour:
 - Hex strings are encoded with the tagged scheme by default (`HexEncoding::Tagged`), as in the Ruby gem 2.0. Hex IDs issued by earlier versions decode only with `hex_encoding: HexEncoding::Legacy`, or with `decode_hex(id, scheme: HexEncoding::Legacy)`. `hex_digit_encoding_group_size` (legacy only) must be between 1 and 12.
 - Sqids decodes only strings that are the canonical encoding of their values, as Hashids always has, and encodes values up to `Encoders::Sqids::MAX_VALUE` (`4611686018427387903`).
 - The minimum alphabet size is per encoder: 3 unique characters for Sqids, 16 for Hashids.
+- `ReversibleId.sqids` uses no blocklist by default. With a blocklist, both encoders check it only for IDs of up to `blocklist_max_length` (32) characters unless `blocklist_mode` is `Always`.
+- `encode_hex` raises `ArgumentError` for an empty hex string. The Ruby gem 2.0 encodes empty strings; this port decodes such IDs but cannot produce them.
 
 The Sqids/Hashids byte-compatibility is verified against published fixtures from the Ruby gem's test suite — e.g. `Hashid.new(salt, 0).encode([12345]) == "NkK9"`, `Sqids.new(8, modified_crockford).encode([123]) == "37vq3u7t"`. See `spec/encoders/*_spec.cr` for the full list.
