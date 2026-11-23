@@ -70,6 +70,34 @@ describe EncodedId::ReversibleId do
       end
     end
 
+    it "encodes integer strings and integral floats as the integer" do
+      id = EncodedId::ReversibleId.sqids
+      id.encode(["123"]).should eq id.encode(123)
+      id.encode(["1", "2"]).should eq id.encode([1, 2])
+      id.encode([" 12 "]).should eq id.encode(12)
+      id.encode(["1_0"]).should eq id.encode(10)
+      id.encode([2.0]).should eq id.encode(2)
+    end
+
+    it "raises InvalidInputError for strings and floats that are not integers" do
+      id = EncodedId::ReversibleId.sqids
+      ["", "abc", "12abc", "1.5", "0x1A"].each do |value|
+        expect_raises(EncodedId::InvalidInputError, /must be integers/) { id.encode([value]) }
+      end
+      [1.9, Float64::NAN, Float64::INFINITY].each do |value|
+        expect_raises(EncodedId::InvalidInputError, /must be integers/) { id.encode([value]) }
+      end
+      expect_raises(EncodedId::InvalidInputError) { id.encode([1e20]) }
+    end
+
+    it "encodes 4611686018427387903 and raises above it" do
+      id = EncodedId::ReversibleId.sqids
+      id.decode(id.encode(4611686018427387903)).should eq [4611686018427387903_i64]
+      expect_raises(EncodedId::InvalidInputError, /4611686018427387903/) do
+        id.encode(4611686018427387904)
+      end
+    end
+
     it "rejects more inputs than max_inputs_per_id" do
       id = EncodedId::ReversibleId.sqids(max_inputs_per_id: 3)
       expect_raises(EncodedId::InvalidInputError, /maximum amount of IDs is 3/) do
@@ -185,6 +213,14 @@ describe EncodedId::ReversibleId do
       # empty array" all the way through the facade.
       id = EncodedId::ReversibleId.hashid(salt: "test")
       id.decode("a" * 30).should eq([] of Int64)
+    end
+
+    it "returns [] of Int64 when decoding characters not in the alphabet" do
+      id = EncodedId::ReversibleId.hashid(salt: "test")
+      ["!!!!", "é", "éé", id.encode(123) + "!", "\xff", "ab\xffcd", id.encode(123) + "\xff"].each do |coded|
+        id.decode(coded).should eq([] of Int64)
+        id.decode_hex(coded).should eq([] of String)
+      end
     end
 
     it "raises InvalidAlphabetError with an alphabet of fifteen characters" do

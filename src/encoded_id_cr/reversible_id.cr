@@ -25,7 +25,9 @@ module EncodedId
     @split_with : String
     @max_inputs_per_id : Int32
     @max_length : Int32?
-    @hex : HexRepresentation
+    @hex_encoding : HexEncoding
+    @legacy_hex : HexRepresentation
+    @tagged_hex : TaggedHexRepresentation
 
     def self.sqids(
       alphabet : Alphabet = Alphabet.modified_crockford,
@@ -36,9 +38,10 @@ module EncodedId
       max_inputs_per_id : Int32 = 32,
       max_length : Int32? = 128,
       hex_digit_encoding_group_size : Int32 = 4,
+      hex_encoding : HexEncoding = HexEncoding::Tagged,
     ) : ReversibleId
       encoder = Encoders::Sqids.new(min_length, alphabet.characters, blocklist)
-      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size)
+      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size, hex_encoding)
     end
 
     def self.hashid(
@@ -53,6 +56,7 @@ module EncodedId
       max_inputs_per_id : Int32 = 32,
       max_length : Int32? = 128,
       hex_digit_encoding_group_size : Int32 = 4,
+      hex_encoding : HexEncoding = HexEncoding::Tagged,
     ) : ReversibleId
       bl = case blocklist
            when Blocklist     then blocklist
@@ -67,7 +71,7 @@ module EncodedId
         blocklist_mode,
         blocklist_max_length,
       )
-      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size)
+      new(encoder, alphabet, split_at, split_with, max_inputs_per_id, max_length, hex_digit_encoding_group_size, hex_encoding)
     end
 
     def initialize(
@@ -78,33 +82,40 @@ module EncodedId
       @max_inputs_per_id : Int32,
       @max_length : Int32?,
       hex_digit_encoding_group_size : Int32 = 4,
+      @hex_encoding : HexEncoding = HexEncoding::Tagged,
     )
-      @hex = HexRepresentation.new(hex_digit_encoding_group_size)
+      @legacy_hex = HexRepresentation.new(hex_digit_encoding_group_size)
+      @tagged_hex = TaggedHexRepresentation.new
     end
 
     getter alphabet : Alphabet
+    getter hex_encoding : HexEncoding
 
     def encode(value : Int) : String
       encode_int64s([value.to_i64])
     end
 
+    # Elements may be integers, integral floats or base-10 integer strings;
+    # anything else raises `InvalidInputError`.
     def encode(values : Array(T)) : String forall T
-      encode_int64s(values.map(&.to_i64))
+      encode_int64s(values.map { |value| integer_input(value) })
     end
 
-    # Encode a hex string (UUIDs, hashes, etc.) by chunking it into integer
-    # groups (default 4 hex digits per group) and encoding the resulting list.
+    # Encode a hex string (UUIDs, hashes, etc.) with the configured
+    # `hex_encoding` and encode the resulting list of integers.
     def encode_hex(hex : String) : String
-      encode_int64s(@hex.hex_as_integers(hex))
+      encode_hex([hex])
     end
 
     def encode_hex(hexes : Array(String)) : String
-      encode_int64s(@hex.hex_as_integers(hexes))
+      encode_int64s(hex_representation(@hex_encoding).hex_as_integers(hexes))
     end
 
     # Decode a previously hex-encoded string back to the array of hex strings.
-    def decode_hex(str : String, downcase : Bool = false) : Array(String)
-      @hex.integers_as_hex(decode(str, downcase: downcase))
+    # `scheme` overrides the configured `hex_encoding`, for example to read
+    # IDs issued with `HexEncoding::Legacy` after switching to `Tagged`.
+    def decode_hex(str : String, downcase : Bool = false, scheme : HexEncoding? = nil) : Array(String)
+      hex_representation(scheme || @hex_encoding).integers_as_hex(decode(str, downcase: downcase))
     end
 
     def decode(str : String, downcase : Bool = false) : Array(Int64)
@@ -139,6 +150,27 @@ module EncodedId
       raise EncodedIdLengthError.new("Encoded ID exceeds max_length") if max_length_exceeded?(encoded)
 
       encoded
+    end
+
+    private def integer_input(value : Int) : Int64
+      value.to_i64
+    end
+
+    private def integer_input(value : Float) : Int64
+      unless value.finite? && value == value.trunc
+        raise InvalidInputError.new("IDs to be encoded must be integers, got #{value.inspect}")
+      end
+      value.to_i64
+    rescue OverflowError
+      raise InvalidInputError.new("IDs to be encoded must fit in Int64, got #{value.inspect}")
+    end
+
+    private def integer_input(value : String) : Int64
+      value.to_i64?(underscore: true) || raise InvalidInputError.new("IDs to be encoded must be integers, got #{value.inspect}")
+    end
+
+    private def hex_representation(scheme : HexEncoding) : HexRepresentation | TaggedHexRepresentation
+      scheme.legacy? ? @legacy_hex : @tagged_hex
     end
 
     private def humanize? : Bool

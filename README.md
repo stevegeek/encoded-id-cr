@@ -10,7 +10,7 @@ The internal Sqids and Hashids encoders are **byte-for-byte compatible** with th
 |---|---|
 | `Alphabet` (with confusable-character equivalences) | ✓ |
 | `CharHelpers` (humanize / unhumanize) | ✓ |
-| `HexRepresentation` (hex strings ↔ integer arrays) | ✓ |
+| `HexRepresentation` / `TaggedHexRepresentation` (hex strings ↔ integer arrays) | ✓ |
 | Sqids encoder (the gem's optimised `MySqids`) | ✓ |
 | Hashids encoder (the gem's optimised `Hashid`) | ✓ |
 | `ReversibleId` facade with `.sqids` / `.hashid` factories | ✓ |
@@ -50,6 +50,11 @@ hid.decode("9da2-a7an")                 # => [12345_i64]
 # Hex (UUIDs etc.)
 id.encode_hex("550e8400e29b41d4a716446655440000")
 id.decode_hex(encoded)                  # => ["550e8400e29b41d4a716446655440000"]
+
+# Hex IDs from the Ruby gem before 2.0 use the legacy hex encoding
+legacy = EncodedId::ReversibleId.sqids(hex_encoding: EncodedId::HexEncoding::Legacy)
+legacy.decode_hex(legacy_encoded)
+id.decode_hex(legacy_encoded, scheme: EncodedId::HexEncoding::Legacy) # same result
 
 # Tolerant decoding (case-insensitive, separator-agnostic)
 id.decode("37VQ3U7T", downcase: true)   # => [123_i64]
@@ -108,5 +113,11 @@ shards build cr_encoded_id   # rebuild the CLI
 `script/cr` is a thin wrapper around `crystal`. When Crystal comes from asdf, it adds the install's embedded libgc to `CRYSTAL_LIBRARY_PATH` for asdf 0.18 compatibility; otherwise it runs `crystal` unchanged.
 
 ## Compatibility note
+
+This port follows the Ruby gem's 2.0 behaviour:
+
+- Hex strings are encoded with the tagged scheme by default (`HexEncoding::Tagged`), as in the Ruby gem 2.0. Hex IDs issued by earlier versions decode only with `hex_encoding: HexEncoding::Legacy`, or with `decode_hex(id, scheme: HexEncoding::Legacy)`. `hex_digit_encoding_group_size` (legacy only) must be between 1 and 12.
+- Sqids decodes only strings that are the canonical encoding of their values, as Hashids always has, and encodes values up to `Encoders::Sqids::MAX_VALUE` (`4611686018427387903`).
+- The minimum alphabet size is per encoder: 3 unique characters for Sqids, 16 for Hashids.
 
 The Sqids/Hashids byte-compatibility is verified against published fixtures from the Ruby gem's test suite — e.g. `Hashid.new(salt, 0).encode([12345]) == "NkK9"`, `Sqids.new(8, modified_crockford).encode([123]) == "37vq3u7t"`. See `spec/encoders/*_spec.cr` for the full list.

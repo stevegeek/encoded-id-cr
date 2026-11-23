@@ -12,7 +12,7 @@ DEFAULT_ALPHA = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 # Production code must not call `unhash` directly — use `decode`, which wraps
 # `unhash` with `DecodePayloadOverflowError` handling.
 class TestableHashid < EncodedId::Encoders::Hashid
-  def _unhash_for_spec(input : String, alphabet : Array(Int32)) : Int64
+  def _unhash_for_spec(input : String, alphabet : Array(Int32)) : Int64?
     unhash(input, alphabet)
   end
 end
@@ -236,10 +236,9 @@ describe EncodedId::Encoders::Hashid do
       h.decode("KQcmkIW8hX").should eq [5_i64, 200_i64, 195_i64, 1_i64]
     end
 
-    it "raises InvalidInputError for malformed input" do
-      expect_raises(EncodedId::InvalidInputError) do
-        DEFAULT_HASH.decode("asdf-")
-      end
+    it "returns empty array for characters not in the alphabet" do
+      DEFAULT_HASH.decode("asdf-").should eq([] of Int64)
+      DEFAULT_HASH.decode("!!!!").should eq([] of Int64)
     end
 
     it "returns [] of Int64 for an attacker-supplied long string that overflows Int64" do

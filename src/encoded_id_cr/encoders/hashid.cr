@@ -129,7 +129,9 @@ module EncodedId
       # when the reconstructed value would exceed `Int64::MAX`. Inputs longer
       # than ~`log_base_N(Int64::MAX)` characters reliably overflow; the public
       # `#decode` method catches that and returns an empty array.
-      private def unhash(input : String, alphabet : Array(Int32)) : Int64
+      #
+      # Returns `nil` when `input` contains a character outside `alphabet`.
+      private def unhash(input : String, alphabet : Array(Int32)) : Int64?
         num = 0_i64
         input_length = input.size
         alphabet_length = alphabet.size
@@ -138,7 +140,7 @@ module EncodedId
         while i < input_length
           first_char = input[i]
           pos = alphabet.index(first_char.ord)
-          raise InvalidInputError.new("unable to unhash") if pos.nil?
+          return if pos.nil?
 
           exponent = input_length - i - 1
           begin
@@ -269,7 +271,10 @@ module EncodedId
           while time < sub_hashes.size
             sub_hash = sub_hashes[time]
             consistent_shuffle!(current_alphabet, seasoning, current_alphabet.dup, current_alphabet.size)
-            ret << unhash(sub_hash, current_alphabet)
+            number = unhash(sub_hash, current_alphabet)
+            return [] of Int64 unless number
+
+            ret << number
             time += 1
           end
 

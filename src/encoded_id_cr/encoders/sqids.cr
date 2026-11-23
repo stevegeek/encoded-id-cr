@@ -23,12 +23,16 @@ require "./blocklist_default"
 #     produced (bounded by alphabet length).
 #
 # This Crystal port operates on `Int32` codepoints (single-byte alphabets only,
-# which the constructor enforces) and `Int64` input numbers (Ruby's arbitrary-
-# precision Integer is approximated; values must fit in `Int64`).
+# which the constructor enforces) and `Int64` input numbers (values must not
+# exceed `MAX_VALUE`, the Ruby gem's limit).
 module EncodedId
   module Encoders
     class Sqids
       MIN_ALPHABET_SIZE = 3
+
+      # The Ruby gem's limit (2**62 - 1), below `Int64::MAX`, so that IDs
+      # stay decodable by the gem.
+      MAX_VALUE = 4_611_686_018_427_387_903_i64
 
       # Shuffled alphabet, stored as codepoints (single-byte chars => Int32).
       @alphabet : Array(Int32)
@@ -86,6 +90,9 @@ module EncodedId
             "encoded_id does not support negative integers"
           )
         end
+        if numbers.any? { |number| number > MAX_VALUE }
+          raise EncodedId::InvalidInputError.new("Sqids can only encode integers up to #{MAX_VALUE}")
+        end
 
         encode_numbers(numbers, 0)
       end
@@ -106,6 +113,7 @@ module EncodedId
       def decode(s : String) : Array(Int64)
         decoded = decode_numbers(s)
         return decoded if decoded.empty?
+        return [] of Int64 if decoded.any? { |number| number > MAX_VALUE }
         return [] of Int64 if encode_numbers(decoded, 0) != s
 
         decoded

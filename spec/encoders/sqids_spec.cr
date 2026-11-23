@@ -38,6 +38,20 @@ describe EncodedId::Encoders::Sqids do
         encoder.encode([-1_i64])
       end
     end
+
+    it "encodes and decodes the maximum value" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      max = EncodedId::Encoders::Sqids::MAX_VALUE
+      max.should eq(4_611_686_018_427_387_903_i64)
+      encoder.decode(encoder.encode([max])).should eq([max])
+    end
+
+    it "raises InvalidInputError above the maximum value" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      expect_raises(EncodedId::InvalidInputError, /4611686018427387903/) do
+        encoder.encode([1_i64, EncodedId::Encoders::Sqids::MAX_VALUE + 1])
+      end
+    end
   end
 
   describe "#decode" do
@@ -120,6 +134,11 @@ describe EncodedId::Encoders::Sqids do
     it "returns [] of Int64 when decoding a string whose value is out of range" do
       encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
       encoder.decode("zzzzzzzzzzzzzzzzzz").should eq([] of Int64)
+    end
+
+    it "returns [] of Int64 when decoding a value above the maximum value" do
+      encoder = EncodedId::Encoders::Sqids.new(8, MODIFIED_CROCKFORD)
+      encoder.decode("49wwwwwwwwwwww").should eq([] of Int64)
     end
   end
 
